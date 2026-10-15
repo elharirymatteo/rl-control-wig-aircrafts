@@ -1,6 +1,7 @@
 """Build the JSON the project page reads, from the paper's tables and the shipped flight traces.
 
     .venv/bin/python docs/tools/build_data.py
+    .venv/bin/python docs/tools/inline_data.py      # copy the new data into docs/index.html
 
 Writes docs/data/results.json (benchmark tables, ground effect, robustness, learning curves,
 airframes) and docs/data/maneuvers.json (decimated 3D flight traces for the replay viewer).

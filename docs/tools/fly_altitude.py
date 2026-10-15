@@ -5,6 +5,7 @@ same checkpoints), but instead of scoring 200 episodes it records the full altit
 trace of one climb and one descent per (airframe, controller), so the page can replay them.
 
     .venv/bin/python docs/tools/fly_altitude.py            # -> docs/data/altitude_replay.json
+    .venv/bin/python docs/tools/inline_data.py             # copy it into docs/index.html
 
 Classical episodes run as child processes, exactly like the benchmark, because the warp reference
 bakes the commanded altitude at build time.

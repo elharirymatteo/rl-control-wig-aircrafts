@@ -9,6 +9,10 @@ environments in parallel — validated against each other to single-step parity.
 learning (PPO, SAC, TD3) and classical control (LQR, MPPI) drive the same command interface through
 the same models, so a comparison measures the controller and not the task encoding.
 
+**Project page:** [docs/index.html](docs/index.html), with the benchmark tables, the paper figures
+and an interactive replay of the recorded flights. The page draws them with JavaScript; in a
+viewer that blocks scripts by default, such as the anonymized repository's, press **JS on**.
+
 ## Requirements
 
 Python 3.10 and an NVIDIA GPU with a CUDA 12.6 driver. The Warp plant is CUDA-only; `falcons check`
@@ -64,6 +68,7 @@ src/falcons/
   benchmark/    the five protocols, the tables, the figures, reproduce
 checkpoints/    39 trained policies
 results/        tables, figures and training curves from the shipped run
+docs/           the project page (index.html) and the tools that build its data
 ```
 
 The disturbance models used by the robustness sweep are documented in
