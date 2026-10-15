@@ -1,0 +1,2442 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>FALCON-S</title>
+<meta name="description" content="FALCON-S: a GPU-parallel 6-DoF simulator and controller benchmark for fixed-wing flight close to the ground. Anonymous project page for double-blind review.">
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#0d141c">
+</head>
+<body>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap">
+<style>
+/* FALCON-S project page.
+   Direction: a flight-test report read at dusk over water. Dark slate ground, one horizon-gold
+   accent taken from the X-Plane render, placard labels in condensed Archivo, data in Plex Mono.
+   Layout: a 68ch report column inside a 1240px instrument frame; the replay, tables and figure
+   plates break out to the full frame. */
+
+:root {
+  --bg: #0d141c;
+  --bg-raise: #131c27;
+  --bg-sunk: #091018;
+  --bg-hover: #1a2531;
+  --line: #263444;
+  --line-soft: #1b2632;
+  --fg: #e7ecf1;
+  --fg-dim: #9aa9b9;
+  --fg-faint: #67798c;
+  --accent: #f2c078;
+  --accent-strong: #ffd597;
+  --accent-ink: #1d1406;
+  --accent-soft: rgba(242, 192, 120, 0.13);
+  --accent-faint: rgba(242, 192, 120, 0.06);
+  --plate: #f8f9fa;
+  --plate-ink: #1b2430;
+  --c-ppo: #5aa6ef;
+  --c-sac: #46c48c;
+  --c-td3: #f39237;
+  --c-lqr: #b296f7;
+  --c-mppi: #f06464;
+  --c-cmd: #e7ecf1;
+  --s-noise: #8fb2d6;
+  --s-sdelay: #f2c078;
+  --s-adelay: #e8875f;
+  --s-turb: #b296f7;
+  --good: #58c7a3;
+  --bad: #f07a68;
+  --heat-lo: #173a37;
+  --heat-hi: #6e2c24;
+  --scene-bg: #0b121a;
+  --scene-grid: #22303e;
+  --scene-grid-soft: #16212c;
+  --shadow: 0 1px 0 rgba(255, 255, 255, 0.03), 0 18px 40px -24px rgba(0, 0, 0, 0.7);
+
+  --f-display: "Archivo", "Arial Narrow", "Helvetica Neue", Arial, sans-serif;
+  --f-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+
+  --fs-xs: 0.75rem;
+  --fs-sm: 0.875rem;
+  --fs-base: 1.0625rem;
+  --fs-md: 1.25rem;
+  --fs-lg: 1.625rem;
+  --fs-xl: clamp(1.9rem, 1.2rem + 2.4vw, 2.75rem);
+  --fs-hero: clamp(3.1rem, 1rem + 8.4vw, 8.25rem);
+
+  --frame: 1240px;
+  --col: 68ch;
+  --gutter: clamp(16px, 4vw, 40px);
+  --radius: 6px;
+  color-scheme: dark;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --bg: #f1f3f5;
+    --bg-raise: #ffffff;
+    --bg-sunk: #e6eaee;
+    --bg-hover: #e9edf1;
+    --line: #cdd5dd;
+    --line-soft: #dfe5eb;
+    --fg: #101923;
+    --fg-dim: #4b5a6a;
+    --fg-faint: #7a8897;
+    --accent: #a9580b;
+    --accent-strong: #8a4706;
+    --accent-ink: #ffffff;
+    --accent-soft: rgba(169, 88, 11, 0.1);
+    --accent-faint: rgba(169, 88, 11, 0.05);
+    --c-ppo: #2a77c8;
+    --c-sac: #18945d;
+    --c-td3: #d96d0c;
+    --c-lqr: #7a58dc;
+    --c-mppi: #d43c3c;
+    --c-cmd: #101923;
+    --s-noise: #4d7fb3;
+    --s-sdelay: #b8780f;
+    --s-adelay: #c4532a;
+    --s-turb: #7a58dc;
+    --good: #12855f;
+    --bad: #c8412f;
+    --heat-lo: #d3eee5;
+    --heat-hi: #f6c4b8;
+    --scene-bg: #e9eef2;
+    --scene-grid: #c3ccd5;
+    --scene-grid-soft: #d8dfe5;
+    --shadow: 0 1px 0 rgba(255, 255, 255, 0.6), 0 18px 40px -26px rgba(16, 25, 35, 0.35);
+    color-scheme: light;
+  }
+}
+
+:root[data-theme="light"] {
+  --bg: #f1f3f5;
+  --bg-raise: #ffffff;
+  --bg-sunk: #e6eaee;
+  --bg-hover: #e9edf1;
+  --line: #cdd5dd;
+  --line-soft: #dfe5eb;
+  --fg: #101923;
+  --fg-dim: #4b5a6a;
+  --fg-faint: #7a8897;
+  --accent: #a9580b;
+  --accent-strong: #8a4706;
+  --accent-ink: #ffffff;
+  --accent-soft: rgba(169, 88, 11, 0.1);
+  --accent-faint: rgba(169, 88, 11, 0.05);
+  --c-ppo: #2a77c8;
+  --c-sac: #18945d;
+  --c-td3: #d96d0c;
+  --c-lqr: #7a58dc;
+  --c-mppi: #d43c3c;
+  --c-cmd: #101923;
+  --s-noise: #4d7fb3;
+  --s-sdelay: #b8780f;
+  --s-adelay: #c4532a;
+  --s-turb: #7a58dc;
+  --good: #12855f;
+  --bad: #c8412f;
+  --heat-lo: #d3eee5;
+  --heat-hi: #f6c4b8;
+  --scene-bg: #e9eef2;
+  --scene-grid: #c3ccd5;
+  --scene-grid-soft: #d8dfe5;
+  --shadow: 0 1px 0 rgba(255, 255, 255, 0.6), 0 18px 40px -26px rgba(16, 25, 35, 0.35);
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] { color-scheme: dark; }
+
+/* ── base ─────────────────────────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+html { scroll-behavior: smooth; scroll-padding-top: 72px; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--f-body);
+  font-size: var(--fs-base);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+img, video, svg, canvas { max-width: 100%; display: block; }
+a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+a:hover { color: var(--accent-strong); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+h1, h2, h3, h4 { font-family: var(--f-display); text-wrap: balance; margin: 0; line-height: 1.1; }
+p { margin: 0; }
+code, kbd, samp, .mono { font-family: var(--f-mono); font-size: 0.92em; }
+.num { font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
+sub, sup { line-height: 0; }
+math { font-size: 1.08em; }
+::selection { background: var(--accent); color: var(--accent-ink); }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+.frame { width: 100%; max-width: calc(var(--frame) + 2 * var(--gutter)); margin-inline: auto; padding-inline: var(--gutter); }
+.col { max-width: var(--col); }
+
+.placard {
+  font-family: var(--f-display);
+  font-stretch: 75%;
+  font-weight: 600;
+  font-size: var(--fs-xs);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--fg-dim);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.9rem;
+  align-items: center;
+}
+.placard .ref { color: var(--accent); }
+
+/* ── top bar ──────────────────────────────────────────────────────────────────────────── */
+.topbar {
+  position: sticky;
+  top: env(safe-area-inset-top, 0px);
+  z-index: 50;
+  background: color-mix(in srgb, var(--bg) 86%, transparent);
+  backdrop-filter: blur(12px) saturate(140%);
+  -webkit-backdrop-filter: blur(12px) saturate(140%);
+  border-bottom: 1px solid var(--line-soft);
+}
+.topbar .frame { display: flex; align-items: center; gap: 1.25rem; min-height: 56px; }
+.topbar .mark {
+  font-family: var(--f-display);
+  font-stretch: 125%;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  font-size: 1rem;
+  color: var(--fg);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.topbar .mark span { color: var(--accent); }
+.topbar nav { flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.topbar nav::-webkit-scrollbar { display: none; }
+.topbar nav ul { list-style: none; display: flex; gap: 0.25rem; margin: 0; padding: 0; }
+.topbar nav a {
+  display: block;
+  padding: 0.4rem 0.7rem;
+  font-family: var(--f-display);
+  font-stretch: 85%;
+  font-weight: 600;
+  font-size: 0.82rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--fg-dim);
+  text-decoration: none;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+.topbar nav a:hover, .topbar nav a[aria-current="true"] { color: var(--fg); background: var(--bg-hover); }
+.theme-btn {
+  flex: none;
+  display: inline-flex; align-items: center; gap: 0.4rem;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--fg-dim);
+  border-radius: 999px;
+  padding: 0.3rem 0.7rem;
+  font: 500 var(--fs-xs) / 1 var(--f-mono);
+  cursor: pointer;
+}
+.theme-btn:hover { color: var(--fg); border-color: var(--fg-faint); }
+
+/* ── hero ─────────────────────────────────────────────────────────────────────────────── */
+.hero { position: relative; background: #0a0f15; color: #f4efe6; overflow: hidden; }
+.hero-media { position: relative; margin: 0; aspect-ratio: 1769 / 836; max-height: 78vh; min-height: 320px; width: 100%; }
+.hero-media img { width: 100%; height: 100%; object-fit: cover; object-position: 50% 45%; }
+.hero-media::after {
+  content: "";
+  position: absolute; inset: 0;
+  background:
+    linear-gradient(180deg, rgba(8, 12, 18, 0.35) 0%, rgba(8, 12, 18, 0) 22%),
+    linear-gradient(0deg, rgba(8, 12, 18, 0.92) 0%, rgba(8, 12, 18, 0.55) 26%, rgba(8, 12, 18, 0) 52%);
+  pointer-events: none;
+}
+.hud { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 1; pointer-events: none; }
+.hud * { vector-effect: non-scaling-stroke; }
+.hud .ln { stroke: #f6d39a; stroke-width: 1.2; fill: none; opacity: 0.8; }
+.hud .ln-faint { stroke: #f6d39a; stroke-width: 1; fill: none; opacity: 0.38; }
+.hud .tx { fill: #f6d39a; font-family: var(--f-mono); font-size: 19px; letter-spacing: 0.04em; }
+.hud .tx-dim { fill: #f6d39a; opacity: 0.62; font-family: var(--f-mono); font-size: 16px; letter-spacing: 0.06em; }
+.hud .tx-big { fill: #ffe2b0; font-family: var(--f-mono); font-size: 30px; font-weight: 500; }
+.hud .ige { fill: #f6d39a; opacity: 0.12; }
+.hud .draw { stroke-dasharray: 1400; stroke-dashoffset: 0; animation: hud-draw 1.6s cubic-bezier(.3,.7,.2,1) both; }
+.hud .fade { animation: hud-fade 1.2s 0.5s ease-out both; }
+@keyframes hud-draw { from { stroke-dashoffset: 1400; } to { stroke-dashoffset: 0; } }
+@keyframes hud-fade { from { opacity: 0.0; } }
+.hud .tape-ptr { animation: tape 7s ease-in-out infinite alternate; transform-box: view-box; }
+@keyframes tape { from { transform: translateY(5px); } to { transform: translateY(-5px); } }
+
+.hero-title {
+  position: absolute;
+  z-index: 2;
+  left: 0; right: 0; bottom: 0;
+  padding-bottom: clamp(18px, 3.2vw, 44px);
+}
+.hero-title .placard { color: rgba(244, 239, 230, 0.72); }
+.hero-title .placard .ref { color: #f6d39a; }
+.wordmark {
+  font-family: var(--f-display);
+  font-stretch: 125%;
+  font-weight: 800;
+  font-size: var(--fs-hero);
+  letter-spacing: 0.02em;
+  line-height: 0.86;
+  color: #f7f1e6;
+  margin-top: 0.6rem;
+  text-shadow: 0 2px 30px rgba(0, 0, 0, 0.35);
+}
+.wordmark .dash { color: #f6c27a; }
+.expansion {
+  margin-top: 0.85rem;
+  font-family: var(--f-display);
+  font-stretch: 100%;
+  font-weight: 500;
+  font-size: clamp(1rem, 0.75rem + 0.9vw, 1.45rem);
+  color: rgba(247, 241, 230, 0.9);
+  max-width: 40ch;
+}
+.expansion b { color: #f6c27a; font-weight: 700; }
+.hero-credit {
+  position: absolute; z-index: 2; right: var(--gutter); bottom: clamp(18px, 3.2vw, 44px);
+  font: 500 var(--fs-xs) / 1.4 var(--f-mono); color: rgba(244, 239, 230, 0.55);
+  text-align: right;
+}
+
+/* cover sheet under the hero */
+.cover { padding-block: clamp(28px, 4vw, 52px) clamp(36px, 5vw, 64px); border-bottom: 1px solid var(--line-soft); }
+.cover .frame { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: clamp(28px, 5vw, 72px); align-items: start; }
+.lede { font-size: clamp(1.1rem, 1rem + 0.35vw, 1.3rem); line-height: 1.55; color: var(--fg); max-width: 58ch; }
+.lede em { font-style: normal; color: var(--accent); }
+.authors { margin-top: 1.4rem; display: flex; flex-wrap: wrap; gap: 0.2rem 1.2rem; font-size: var(--fs-sm); color: var(--fg-dim); }
+.authors b { color: var(--fg); font-weight: 600; }
+.authors .aff { width: 100%; color: var(--fg-faint); }
+.btns { display: flex; flex-wrap: wrap; gap: 0.6rem; margin-top: 1.6rem; }
+.btn {
+  display: inline-flex; align-items: center; gap: 0.55rem;
+  padding: 0.62rem 1rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  background: var(--bg-raise);
+  color: var(--fg);
+  font: 600 var(--fs-sm) / 1 var(--f-body);
+  text-decoration: none;
+  cursor: pointer;
+  transition: border-color .15s, background .15s, transform .15s;
+}
+.btn:hover { border-color: var(--fg-faint); color: var(--fg); background: var(--bg-hover); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.btn.primary:hover { background: var(--accent-strong); border-color: var(--accent-strong); color: var(--accent-ink); }
+.btn svg { width: 16px; height: 16px; flex: none; }
+.btn[aria-disabled="true"] { opacity: 0.55; cursor: default; }
+.btn .soon { font: 500 0.68rem/1 var(--f-mono); color: var(--fg-faint); }
+
+.readouts { display: grid; gap: 0; border-top: 1px solid var(--line); }
+.readout { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0.2rem 1rem; padding: 0.85rem 0; border-bottom: 1px solid var(--line); align-items: baseline; }
+.readout .v { font-family: var(--f-mono); font-variant-numeric: tabular-nums; font-size: clamp(1.35rem, 1.1rem + 0.9vw, 1.85rem); font-weight: 500; color: var(--fg); letter-spacing: -0.01em; text-align: right; white-space: nowrap; }
+.readout .v small { font-size: 0.55em; color: var(--fg-dim); margin-left: 0.2em; letter-spacing: 0.02em; }
+.readout .k { font-size: var(--fs-sm); color: var(--fg-dim); line-height: 1.4; }
+.readout .k b { color: var(--fg); font-weight: 600; display: block; }
+
+/* ── sections ─────────────────────────────────────────────────────────────────────────── */
+section.block { padding-block: clamp(56px, 8vw, 104px); border-bottom: 1px solid var(--line-soft); }
+section.block.tight { padding-top: clamp(28px, 4vw, 48px); }
+.sec-head { display: grid; gap: 0.9rem; margin-bottom: clamp(24px, 3.5vw, 40px); }
+.sec-head h2 { font-size: var(--fs-xl); font-weight: 700; font-stretch: 100%; letter-spacing: -0.01em; }
+.sec-head .lede { font-size: var(--fs-md); color: var(--fg-dim); max-width: 62ch; }
+.sec-head .lede strong { color: var(--fg); font-weight: 600; }
+.sub-head { display: grid; gap: 0.6rem; margin: clamp(48px, 6vw, 80px) 0 clamp(18px, 2.5vw, 28px); padding-top: clamp(28px, 4vw, 44px); border-top: 1px solid var(--line-soft); }
+.sub-head h3 { font-size: var(--fs-lg); font-weight: 700; letter-spacing: -0.005em; }
+.sub-head .lede { font-size: var(--fs-base); color: var(--fg-dim); max-width: 66ch; }
+.prose { display: grid; gap: 1rem; max-width: var(--col); color: var(--fg-dim); }
+.prose strong { color: var(--fg); font-weight: 600; }
+.two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: clamp(20px, 3vw, 40px); align-items: start; }
+.two > * { min-width: 0; }
+
+.findings { list-style: none; margin: clamp(22px, 3vw, 32px) 0 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: clamp(16px, 2.4vw, 32px); }
+.findings li { border-top: 2px solid var(--line); padding-top: 0.9rem; color: var(--fg-dim); font-size: 0.98rem; }
+.findings li b { display: block; color: var(--fg); font-family: var(--f-display); font-size: 1.12rem; font-weight: 700; margin-bottom: 0.35rem; line-height: 1.25; }
+.findings li .m { display: inline-block; width: 0.6rem; height: 0.6rem; border-radius: 50%; margin-right: 0.45rem; vertical-align: 0.06em; }
+
+/* figure plates: paper figures are white-ground matplotlib, so they sit on a printed plate */
+.plate { margin: 0; display: grid; gap: 0.7rem; }
+.plate .sheet { background: var(--plate); border-radius: var(--radius); padding: clamp(8px, 1.6vw, 18px); box-shadow: var(--shadow); overflow-x: auto; }
+.plate .sheet img { width: 100%; height: auto; min-width: 560px; }
+.plate.nomin .sheet img { min-width: 0; }
+.plate figcaption { font-size: var(--fs-sm); color: var(--fg-dim); max-width: 92ch; }
+.plate figcaption b { color: var(--fg); font-weight: 600; font-family: var(--f-display); letter-spacing: 0.02em; }
+
+/* ── controls ─────────────────────────────────────────────────────────────────────────── */
+.seg { display: inline-flex; flex-wrap: wrap; border: 1px solid var(--line); border-radius: var(--radius); padding: 2px; background: var(--bg-sunk); gap: 2px; }
+.seg button {
+  border: 0; background: transparent; color: var(--fg-dim);
+  padding: 0.42rem 0.75rem; border-radius: 4px;
+  font: 600 0.8rem/1.1 var(--f-display); font-stretch: 90%; letter-spacing: 0.05em; text-transform: uppercase;
+  cursor: pointer; white-space: nowrap;
+}
+.seg button:hover { color: var(--fg); }
+.seg button[aria-pressed="true"] { background: var(--bg-raise); color: var(--fg); box-shadow: inset 0 0 0 1px var(--line); }
+.ctrl-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem 1.25rem; }
+.ctrl { display: grid; gap: 0.35rem; }
+.ctrl > .placard { font-size: 0.68rem; }
+.icon-btn {
+  display: inline-grid; place-items: center; width: 40px; height: 40px; flex: none;
+  border-radius: 50%; border: 1px solid var(--line); background: var(--bg-raise); color: var(--fg); cursor: pointer;
+}
+.icon-btn:hover { border-color: var(--accent); color: var(--accent); }
+.icon-btn svg { width: 16px; height: 16px; }
+input[type="range"] { accent-color: var(--accent); width: 100%; }
+
+/* ── replay ───────────────────────────────────────────────────────────────────────────── */
+.replay { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 0; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--bg-raise); box-shadow: var(--shadow); }
+.viewport { position: relative; min-width: 0; background: var(--scene-bg); min-height: 580px; touch-action: pan-y; cursor: grab; }
+.viewport:active { cursor: grabbing; }
+.viewport canvas { width: 100% !important; height: 100% !important; }
+.vp-hud { position: absolute; left: 14px; top: 12px; right: 14px; display: flex; justify-content: space-between; gap: 1rem; pointer-events: none; font: 500 0.78rem/1.45 var(--f-mono); color: var(--fg-dim); }
+.vp-hud .big { font-size: 1.05rem; color: var(--fg); }
+.vp-hud .r { text-align: right; }
+.vp-hint { position: absolute; left: 14px; bottom: 12px; font: 500 0.72rem/1.3 var(--f-mono); color: var(--fg-faint); pointer-events: none; }
+.vp-legend { position: absolute; right: 14px; bottom: 12px; display: flex; align-items: center; gap: 0.5rem; font: 500 0.7rem/1 var(--f-mono); color: var(--fg-faint); pointer-events: none; }
+.vp-legend i { display: block; width: 90px; height: 6px; border-radius: 3px; background: linear-gradient(90deg, #3b4cc0, #8db0fe 30%, #dddcdc 50%, #f4987a 70%, #b40426); }
+.vp-fallback { position: absolute; inset: 0; display: grid; place-items: center; padding: 24px; text-align: center; color: var(--fg-dim); font-size: var(--fs-sm); }
+
+.side { border-left: 1px solid var(--line); display: grid; align-content: start; gap: 1.1rem; padding: 16px; min-width: 0; }
+.mlist { display: grid; gap: 2px; }
+.mrow {
+  display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; align-items: center; gap: 0.55rem;
+  padding: 0.45rem 0.5rem; border-radius: 5px; cursor: pointer; border: 1px solid transparent;
+}
+.mrow:hover { background: var(--bg-hover); }
+.mrow.focus { border-color: var(--line); background: var(--bg-sunk); }
+.mrow input { margin: 0; accent-color: var(--accent); width: 15px; height: 15px; }
+.mrow .nm { font: 700 0.92rem/1.1 var(--f-display); letter-spacing: 0.03em; display: flex; align-items: center; gap: 0.45rem; }
+.mrow .nm i { width: 10px; height: 10px; border-radius: 2px; flex: none; }
+.mrow .sub { font: 400 0.7rem/1.3 var(--f-mono); color: var(--fg-faint); display: block; margin-top: 2px; }
+.mrow .live { font: 500 0.82rem/1.2 var(--f-mono); font-variant-numeric: tabular-nums; text-align: right; color: var(--fg); }
+.mrow .live small { display: block; color: var(--fg-faint); font-size: 0.68rem; }
+.mrow.off { opacity: 0.45; }
+.transport { grid-column: 1 / -1; display: flex; align-items: center; gap: 0.9rem; padding: 10px 16px; border-top: 1px solid var(--line); flex-wrap: wrap; }
+.transport .time { font: 500 0.85rem/1 var(--f-mono); font-variant-numeric: tabular-nums; color: var(--fg-dim); min-width: 9.5ch; }
+.transport input[type="range"] { flex: 1 1 200px; min-width: 0; }
+.strip { grid-column: 1 / -1; border-top: 1px solid var(--line); padding: 10px 16px 6px; }
+.strip svg { width: 100%; height: 190px; touch-action: pan-y; cursor: crosshair; }
+.cell-defs { display: flex; flex-wrap: wrap; gap: 0.3rem 1.2rem; font: 500 0.78rem/1.4 var(--f-mono); color: var(--fg-dim); }
+.cell-defs b { color: var(--fg); font-weight: 500; }
+
+/* ── tables ───────────────────────────────────────────────────────────────────────────── */
+.tbl-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; background: var(--bg-raise); }
+table.data { width: 100%; border-collapse: collapse; font-size: 0.9rem; font-variant-numeric: tabular-nums; }
+table.data th, table.data td { padding: 0.55rem 0.8rem; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--line-soft); }
+table.data th:first-child, table.data td:first-child { text-align: left; }
+table.data thead th { font: 600 0.7rem/1.2 var(--f-display); font-stretch: 85%; letter-spacing: 0.12em; text-transform: uppercase; color: var(--fg-dim); background: var(--bg-sunk); border-bottom: 1px solid var(--line); vertical-align: bottom; }
+table.data tbody tr:last-child td { border-bottom: 0; }
+table.data td { font-family: var(--f-mono); font-size: 0.84rem; color: var(--fg); }
+table.data td.mname { font-family: var(--f-display); font-weight: 700; font-size: 0.92rem; letter-spacing: 0.03em; }
+table.data td .pm { color: var(--fg-faint); font-size: 0.92em; }
+table.data td .dash { color: var(--fg-faint); }
+table.data tr.group td { background: var(--bg-sunk); font: 600 0.72rem/1 var(--f-display); font-stretch: 85%; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent); text-align: left; padding-block: 0.5rem; }
+.dot { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 0.5rem; vertical-align: 0.02em; }
+.bar { display: inline-grid; grid-template-columns: 56px auto; align-items: center; gap: 0.5rem; justify-content: end; }
+.bar i { display: block; height: 6px; border-radius: 3px; background: var(--line); position: relative; overflow: hidden; }
+.bar i::after { content: ""; position: absolute; inset: 0 auto 0 0; width: var(--w, 0%); background: var(--bar, var(--fg-dim)); border-radius: 3px; }
+.tag { display: inline-block; padding: 0.15rem 0.45rem; border-radius: 3px; font: 600 0.68rem/1.2 var(--f-mono); letter-spacing: 0.02em; }
+.tag.good { background: color-mix(in srgb, var(--good) 18%, transparent); color: var(--good); }
+.tag.bad { background: color-mix(in srgb, var(--bad) 18%, transparent); color: var(--bad); }
+.tag.warn { background: var(--accent-soft); color: var(--accent); }
+.tbl-note { margin-top: 0.7rem; font-size: var(--fs-sm); color: var(--fg-faint); max-width: 100ch; }
+
+/* heatmap */
+.heat { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: clamp(16px, 2.4vw, 28px); }
+.heat > div { min-width: 0; }
+.heat h4 { font: 700 1rem/1.2 var(--f-display); letter-spacing: 0.02em; margin-bottom: 0.6rem; display: flex; justify-content: space-between; gap: 1rem; align-items: baseline; }
+.heat h4 span { font: 500 0.72rem/1 var(--f-mono); color: var(--fg-faint); letter-spacing: 0; }
+.hgrid { display: grid; grid-template-columns: 64px repeat(4, minmax(0, 1fr)); gap: 3px; }
+.hgrid .ch { font: 600 0.68rem/1.2 var(--f-display); font-stretch: 85%; letter-spacing: 0.12em; text-transform: uppercase; color: var(--fg-dim); text-align: center; padding: 0.3rem 0; }
+.hgrid .rh { font: 700 0.86rem/1 var(--f-display); letter-spacing: 0.03em; display: flex; align-items: center; gap: 0.4rem; }
+.hcell {
+  border: 0; border-radius: 4px; padding: 0.55rem 0.4rem; text-align: center; cursor: pointer; color: var(--fg);
+  background: color-mix(in oklab, var(--heat-lo), var(--heat-hi) var(--t, 0%));
+  display: grid; gap: 1px; min-height: 58px; align-content: center; font-family: var(--f-mono);
+  transition: transform .12s, box-shadow .12s;
+}
+.hcell:hover { box-shadow: inset 0 0 0 1px var(--fg-dim); }
+.hcell .v { font-size: 0.95rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.hcell .s { font-size: 0.68rem; color: var(--fg-dim); font-variant-numeric: tabular-nums; }
+.hcell.best { box-shadow: inset 0 0 0 2px var(--good); }
+.heat-key { display: flex; align-items: center; gap: 0.6rem; margin-top: 0.9rem; font: 500 0.72rem/1.3 var(--f-mono); color: var(--fg-faint); flex-wrap: wrap; }
+.heat-key i { display: block; width: 120px; height: 8px; border-radius: 4px; background: linear-gradient(90deg, var(--heat-lo), var(--heat-hi)); }
+.heat-key .b { width: 14px; height: 14px; border-radius: 3px; box-shadow: inset 0 0 0 2px var(--good); }
+
+/* generic chart */
+.chart { width: 100%; }
+.chart svg { width: 100%; height: auto; overflow: visible; }
+.chart text { fill: var(--fg-dim); font-family: var(--f-mono); font-size: 11px; }
+.chart .axis path, .chart .axis line { stroke: var(--line); }
+.chart .grid line { stroke: var(--line-soft); }
+.chart .grid path { display: none; }
+.chart .lbl { fill: var(--fg); font-family: var(--f-display); font-weight: 700; font-size: 12.5px; letter-spacing: 0.02em; }
+.chart .note { fill: var(--fg-dim); font-size: 10.5px; }
+.chart-legend { display: flex; flex-wrap: wrap; gap: 0.4rem 1.1rem; font: 500 0.78rem/1.3 var(--f-mono); color: var(--fg-dim); margin-top: 0.6rem; }
+.chart-legend span { display: inline-flex; align-items: center; gap: 0.4rem; }
+.chart-legend i { display: inline-block; width: 16px; height: 0; border-top: 2px solid currentColor; }
+.chart-legend i.dash { border-top-style: dashed; }
+.chart-legend i.dot2 { border-top-style: dotted; border-top-width: 3px; }
+.panel { border: 1px solid var(--line); border-radius: 8px; background: var(--bg-raise); padding: clamp(14px, 2vw, 22px); min-width: 0; }
+.panel-head { display: flex; justify-content: space-between; align-items: center; gap: 0.8rem 1.2rem; flex-wrap: wrap; margin-bottom: 0.9rem; }
+.panel-head h4 { font: 700 1.05rem/1.2 var(--f-display); letter-spacing: 0.01em; }
+
+/* altitude replay legend */
+.alt-legend { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; margin-top: 0.9rem; }
+.alt-legend > div { border-top: 2px solid var(--c, var(--line)); padding-top: 0.45rem; min-width: 0; }
+.alt-legend b { font: 700 0.88rem/1.1 var(--f-display); letter-spacing: 0.03em; display: block; }
+.alt-legend span { font: 500 0.72rem/1.35 var(--f-mono); color: var(--fg-dim); display: block; margin-top: 0.15rem; }
+
+/* ground effect */
+.ge { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: clamp(16px, 2.4vw, 28px); }
+.ge > * { min-width: 0; }
+.ge-scene svg { width: 100%; height: auto; display: block; }
+.ge-read { display: grid; gap: 0; margin-top: 0.4rem; }
+.ge-read .r { display: grid; grid-template-columns: minmax(0, 1fr) 9.5ch 110px; gap: 0.8rem; align-items: center; padding: 0.5rem 0; border-bottom: 1px solid var(--line-soft); font-size: var(--fs-sm); color: var(--fg-dim); }
+.ge-read .r .n { font: 500 0.95rem/1 var(--f-mono); font-variant-numeric: tabular-nums; color: var(--fg); text-align: right; }
+.ge-read .r .n.na { color: var(--fg-faint); font-size: 0.78rem; }
+.ge-read .r .gb { height: 8px; background: var(--line-soft); border-radius: 4px; position: relative; overflow: hidden; }
+.ge-read .r .gb::after { content: ""; position: absolute; right: auto; left: 0; top: 0; bottom: 0; width: var(--w, 0%); background: var(--c, var(--accent)); border-radius: 4px; transition: width .35s ease; }
+.hb-stops { display: flex; justify-content: space-between; font: 500 0.72rem/1 var(--f-mono); color: var(--fg-faint); margin-top: 0.35rem; }
+
+/* sensors demo */
+.sensor { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: clamp(16px, 2.4vw, 28px); align-items: start; }
+.sensor > * { min-width: 0; }
+.sensor canvas { width: 100%; height: 220px; border-radius: 6px; background: var(--bg-sunk); }
+.sliders { display: grid; gap: 0.75rem; }
+.sl { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0.2rem 0.6rem; align-items: center; font-size: var(--fs-sm); color: var(--fg-dim); }
+.sl output { font: 500 0.82rem/1 var(--f-mono); color: var(--fg); font-variant-numeric: tabular-nums; }
+.sl input { grid-column: 1 / -1; }
+
+/* physics cards */
+.phys { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0; border-top: 1px solid var(--line); }
+.phys > div { padding: 1.2rem 1.2rem 1.4rem 0; border-bottom: 1px solid var(--line); display: grid; gap: 0.55rem; align-content: start; min-width: 0; }
+.phys > div + div { padding-left: 1.2rem; border-left: 1px solid var(--line-soft); }
+.phys > div:nth-child(3n + 1) { padding-left: 0; border-left: 0; }
+.phys h4 { font: 700 1.05rem/1.2 var(--f-display); }
+.phys p { font-size: 0.93rem; color: var(--fg-dim); }
+.phys .eq { overflow-x: auto; padding: 0.4rem 0; color: var(--fg); }
+.phys .k { font: 500 0.75rem/1.5 var(--f-mono); color: var(--fg-faint); }
+
+/* airframes */
+.fleet { display: grid; gap: 0; border-top: 1px solid var(--line); }
+.ship { display: grid; grid-template-columns: 210px minmax(0, 1fr) repeat(4, minmax(78px, auto)); gap: 0.4rem 1.4rem; align-items: center; padding: 0.95rem 0; border-bottom: 1px solid var(--line-soft); }
+.ship .nm { font: 700 1.05rem/1.2 var(--f-display); letter-spacing: 0.01em; }
+.ship .nm small { display: block; font: 500 0.72rem/1.35 var(--f-mono); color: var(--fg-faint); letter-spacing: 0; margin-top: 2px; }
+.ship .span { position: relative; height: 34px; min-width: 0; }
+.ship .span svg { width: 100%; height: 34px; overflow: visible; }
+.ship .kv { text-align: right; font: 500 0.92rem/1.2 var(--f-mono); font-variant-numeric: tabular-nums; color: var(--fg); white-space: nowrap; }
+.ship .kv small { display: block; font: 500 0.66rem/1.2 var(--f-display); font-stretch: 85%; letter-spacing: 0.12em; text-transform: uppercase; color: var(--fg-faint); margin-top: 3px; }
+.ship.head { padding: 0.5rem 0; }
+
+/* code */
+.code-grid { display: grid; grid-template-columns: minmax(0, 1.12fr) minmax(0, 1fr) minmax(0, 1fr); gap: clamp(14px, 2vw, 22px); }
+.code { position: relative; min-width: 0; border: 1px solid var(--line); border-radius: 8px; background: var(--bg-sunk); display: grid; grid-template-rows: auto 1fr; }
+.code header { display: flex; justify-content: space-between; align-items: center; gap: 0.6rem; padding: 0.55rem 0.8rem; border-bottom: 1px solid var(--line); }
+.code pre { margin: 0; padding: 0.9rem 0.95rem 1rem; overflow-x: auto; font: 400 0.76rem/1.65 var(--f-mono); color: var(--fg); }
+.code pre .c { color: var(--fg-faint); }
+.code pre .p { color: var(--accent); user-select: none; }
+.copy { border: 1px solid var(--line); background: var(--bg-raise); color: var(--fg-dim); border-radius: 4px; padding: 0.25rem 0.55rem; font: 500 0.7rem/1 var(--f-mono); cursor: pointer; }
+.copy:hover { color: var(--fg); border-color: var(--fg-faint); }
+.copy.ok { color: var(--good); border-color: var(--good); }
+
+.repro { margin-top: clamp(22px, 3vw, 32px); display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: clamp(16px, 2.4vw, 32px); }
+.repro div { border-top: 2px solid var(--line); padding-top: 0.8rem; font-size: 0.95rem; color: var(--fg-dim); }
+.repro b { display: block; color: var(--fg); font-family: var(--f-display); font-size: 1.05rem; margin-bottom: 0.3rem; }
+
+footer.site { padding-block: 40px 56px; color: var(--fg-faint); font-size: var(--fs-sm); }
+footer.site .frame { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 1rem; }
+
+/* ── responsive ───────────────────────────────────────────────────────────────────────── */
+@media (max-width: 1060px) {
+  .replay { grid-template-columns: minmax(0, 1fr); }
+  .viewport { min-height: 0; aspect-ratio: 16 / 10; max-height: 72vh; }
+  .side { border-left: 0; border-top: 1px solid var(--line); grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .side .mblock { grid-column: 1 / -1; }
+  .mlist { grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); }
+  .code-grid { grid-template-columns: minmax(0, 1fr); }
+  .ship { grid-template-columns: 170px minmax(0, 1fr) repeat(2, minmax(70px, auto)); }
+  .ship .kv.opt { display: none; }
+}
+@media (max-width: 860px) {
+  .cover .frame, .two, .ge, .sensor, .heat { grid-template-columns: minmax(0, 1fr); }
+  .findings, .repro { grid-template-columns: minmax(0, 1fr); }
+  .phys { grid-template-columns: minmax(0, 1fr); }
+  .phys > div, .phys > div + div { padding-left: 0; border-left: 0; padding-right: 0; }
+  .alt-legend { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .hero-credit { display: none; }
+}
+@media (max-width: 640px) {
+  .hero-media { aspect-ratio: 4 / 3.4; max-height: none; }
+  .hero-media img { object-position: 52% 50%; }
+  .hud .hide-sm { display: none; }
+  .side { grid-template-columns: minmax(0, 1fr); }
+  .ship { grid-template-columns: minmax(0, 1fr) repeat(2, auto); }
+  .ship .span { grid-column: 1 / -1; grid-row: 2; }
+  .viewport { aspect-ratio: 4 / 4; }
+  .topbar nav { display: none; }
+  .topbar .frame { justify-content: space-between; }
+  .hgrid { grid-template-columns: 52px repeat(4, minmax(0, 1fr)); }
+  .hcell .s { display: none; }
+  .ge-read .r { grid-template-columns: minmax(0, 1fr) 9ch 64px; }
+  .hcell .pm, .hgrid .ch .sub { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .hud .draw, .hud .fade, .hud .tape-ptr { animation: none; }
+  * { transition: none !important; }
+}
+
+</style>
+
+
+<header class="topbar">
+  <div class="frame">
+    <a class="mark" href="#top">FALCON<span>-</span>S</a>
+    <nav aria-label="Sections">
+      <ul>
+        <li><a href="#replay">Replay</a></li>
+        <li><a href="#results">Results</a></li>
+        <li><a href="#ground-effect">Ground effect</a></li>
+        <li><a href="#simulator">Simulator</a></li>
+        <li><a href="#airframes">Airframes</a></li>
+        <li><a href="#code">Code</a></li>
+        <li><a href="#cite">Cite</a></li>
+      </ul>
+    </nav>
+    <button class="theme-btn" id="theme-btn" type="button" aria-label="Colour theme">
+      <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><circle cx="6" cy="6" r="5" fill="none" stroke="currentColor"/><path d="M6 1a5 5 0 0 1 0 10z" fill="currentColor"/></svg>
+      <span id="theme-label">auto</span>
+    </button>
+  </div>
+</header>
+
+<main id="top">
+
+<!-- ═══ HERO ═══════════════════════════════════════════════════════════════════════════ -->
+<section class="hero" aria-label="FALCON-S">
+  <figure class="hero-media">
+    <img src="assets/img/xplane-v7-sunset.webp"
+         srcset="assets/img/xplane-v7-sunset-sm.webp 900w, assets/img/xplane-v7-sunset.webp 1769w"
+         sizes="100vw" width="1769" height="836"
+         alt="The Airship V7 wing-in-ground-effect prototype flying low over the sea at sunset, rendered in X-Plane.">
+    <svg class="hud" viewBox="0 0 1769 836" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+      <!-- horizon reference -->
+      <g class="draw">
+        <path class="ln-faint" d="M40 411 H250 M262 411 h14 M1490 411 H1560"/>
+        <path class="ln-faint" d="M150 401 v20 M1525 401 v20"/>
+      </g>
+      <!-- readout block -->
+      <g class="fade hide-sm">
+        <text class="tx-dim" x="70" y="92">AIRSHIP V7 · LEVEL TRIM · 28.0 m/s</text>
+        <text class="tx" x="70" y="128">h/b 0.25   h 1.25 m</text>
+        <text class="tx" x="70" y="160">T<tspan dy="5" font-size="14">req</tspan><tspan dy="-5"> 54.4 N   OGE 72.9 N</tspan></text>
+        <text class="tx-big" x="70" y="212">ΔT −25.4&nbsp;%</text>
+        <text class="tx-dim" x="70" y="244">THRUST TO HOLD ALTITUDE, IN GROUND EFFECT</text>
+        <path class="ln" d="M60 66 v190"/>
+      </g>
+      <!-- altitude tape: 0–6 m at 80 px/m, 0 m at y=630 -->
+      <g class="hide-sm">
+        <rect class="ige fade" x="1650" y="230" width="44" height="400"/>
+        <g class="draw">
+          <path class="ln" d="M1650 150 V630"/>
+          <path class="ln" d="M1650 630 h30 M1650 550 h18 M1650 470 h18 M1650 390 h18 M1650 310 h18 M1650 230 h30 M1650 150 h18"/>
+          <path class="ln-faint" d="M1650 590 h9 M1650 510 h9 M1650 430 h9 M1650 350 h9 M1650 270 h9 M1650 190 h9"/>
+        </g>
+        <g class="fade">
+          <text class="tx-dim" x="1692" y="636">0</text>
+          <text class="tx-dim" x="1692" y="556">1</text>
+          <text class="tx-dim" x="1692" y="476">2</text>
+          <text class="tx-dim" x="1692" y="396">3</text>
+          <text class="tx-dim" x="1692" y="316">4</text>
+          <text class="tx" x="1692" y="236">5  h/b=1</text>
+          <text class="tx-dim" x="1692" y="156">6</text>
+          <text class="tx-dim" x="1612" y="128">h [m]</text>
+          <text class="tx-dim" x="1700" y="430" transform="rotate(90 1700 430)">IN GROUND EFFECT</text>
+        </g>
+        <g class="tape-ptr fade">
+          <path class="ln" d="M1650 530 l-14 -12 h-92 v24 h92 z"/>
+          <text class="tx" x="1552" y="537">1.25</text>
+        </g>
+      </g>
+    </svg>
+  </figure>
+  <div class="hero-title">
+    <div class="frame">
+      <p class="placard"><span class="ref">Simulation framework + controller benchmark</span><span>2026</span></p>
+      <h1 class="wordmark">FALCON<span class="dash">-</span>S</h1>
+      <p class="expansion"><b>F</b>ixed-wing ground-effect <b>A</b>erodynamics Simulator and Flight <b>Con</b>trol <b>L</b>earning <b>S</b>uite</p>
+    </div>
+  </div>
+  <p class="hero-credit">X-Plane render<br>Airship V7 in ground effect</p>
+</section>
+
+<!-- ═══ COVER SHEET ═══════════════════════════════════════════════════════════════════ -->
+<section class="cover">
+  <div class="frame">
+    <div>
+      <p class="lede">FALCON-S is a GPU-parallel, six-degree-of-freedom simulator and controller benchmark for fixed-wing aircraft flying close to the ground. It models <em>ground effect</em>, actuator and sensor dynamics and Dryden turbulence across five airframes, and drives reinforcement learning (PPO, SAC, TD3) and classical control (LQR, MPPI) through one command interface and one plant, so a comparison measures the controller and not the task encoding.</p>
+      <p class="authors">
+        <b>Anonymous authors</b>
+        <span class="aff">Paper under double-blind review. Code, checkpoints and results are in the anonymized repository.</span>
+      </p>
+      <div class="btns">
+        <a class="btn" aria-disabled="true" role="link" title="Available after review">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 1.5h5.5L13 5v9.5H4z M9.5 1.5V5H13" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>
+          Paper <span class="soon">under review</span></a>
+        <a class="btn primary" href="https://anonymous.4open.science/r/rl-control-wig-aircrafts-1D52/" target="_blank" rel="noopener">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 .2a8 8 0 0 0-2.5 15.6c.4.1.5-.2.5-.4v-1.5c-2.2.5-2.7-1-2.7-1-.4-.9-.9-1.2-.9-1.2-.7-.5.1-.5.1-.5.8.1 1.2.8 1.2.8.7 1.3 1.9.9 2.4.7 0-.5.3-.9.5-1.1-1.8-.2-3.6-.9-3.6-4 0-.9.3-1.6.8-2.1-.1-.2-.4-1 .1-2.1 0 0 .7-.2 2.2.8a7.4 7.4 0 0 1 4 0c1.5-1 2.2-.8 2.2-.8.4 1.1.2 1.9.1 2.1.5.6.8 1.3.8 2.1 0 3.1-1.9 3.8-3.6 4 .3.3.6.8.6 1.5v2.2c0 .2.1.5.6.4A8 8 0 0 0 8 .2"/></svg>
+          Code <span class="soon" style="color:inherit;opacity:.7">anonymized</span></a>
+        <a class="btn" href="https://anonymous.4open.science/r/rl-control-wig-aircrafts-1D52/checkpoints/" target="_blank" rel="noopener">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4.5 8 1.5l5.5 3v7L8 14.5l-5.5-3z M2.5 4.5 8 7.5l5.5-3 M8 7.5v7" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>
+          39 checkpoints</a>
+        <a class="btn" href="#cite">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 4h4v4H5c0 2 1 3 2 3.5M9 4h4v4h-2c0 2 1 3 2 3.5" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>
+          BibTeX</a>
+      </div>
+    </div>
+    <div class="readouts" aria-label="Headline figures">
+      <div class="readout"><p class="k"><b>Warp backend throughput</b>16,384 parallel environments on one RTX 4090</p><p class="v">19.5<small>M steps/s</small></p></div>
+      <div class="readout"><p class="k"><b>Against NeuralPlane</b>at 10⁶ environments: 67.1 M against a published 5.0 M steps/s</p><p class="v">13.4<small>×</small></p></div>
+      <div class="readout"><p class="k"><b>PPO altitude policy</b>150 M environment steps of training, wall clock</p><p class="v">&lt;5<small>min</small></p></div>
+      <div class="readout"><p class="k"><b>Agreement with JSBSim</b>Pearson r on altitude, pitch rate and airspeed, h₀ = 1 m, ground effect off</p><p class="v">0.9999</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ OVERVIEW ══════════════════════════════════════════════════════════════════════ -->
+<section class="block" id="overview">
+  <div class="frame">
+    <header class="sec-head">
+      <p class="placard"><span class="ref">Overview</span><span>Agent module · environment module</span></p>
+      <h2>One plant, one command interface, five controllers</h2>
+      <p class="lede">Simulators built for pilots are hard to run at scale, and simulators built for learning tend to drop the physics that matter near the ground. FALCON-S keeps <strong>ground effect, actuator lag, sensor imperfection and turbulence</strong> in the loop and still steps tens of millions of environments per second.</p>
+    </header>
+    <figure class="plate nomin">
+      <div class="sheet"><img src="assets/img/architecture.webp" width="1724" height="752" loading="lazy" alt="Architecture diagram. The agent module holds LQR, MPPI, PPO, SAC and TD3 controllers that train and evaluate on CPU or GPU, scored by RMSE, mean error, overshoot, settling time and energy. The environment module holds flight tasks (fixed and dynamic altitude keeping, 2D and 3D trajectory following), core physics (actuators, sensors, ground effect, wind and turbulence, atmospheric pressure, aerodynamics), PyTorch, SciPy and Warp backends, OpenVSP-derived aerodynamic coefficients and five aircraft models. Validation runs against JSBSim and X-Plane."></div>
+      <figcaption><b>Architecture.</b> The agent module hosts the controllers with their training and evaluation pipelines. The environment module couples the 6-DoF flight model to actuators, sensors, ground effect and turbulence through three interchangeable physics backends. Each phenomenon toggles independently, so ablations change one assumption at a time.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<!-- ═══ REPLAY ════════════════════════════════════════════════════════════════════════ -->
+<section class="block" id="replay">
+  <div class="frame">
+    <header class="sec-head">
+      <p class="placard"><span class="ref">Recorded flights</span><span>2 airframes × 4 maneuvers × 5 controllers</span></p>
+      <h2>Five controllers fly the same command stream</h2>
+      <p class="lede">A maneuver here is a stream of bank, climb-rate and airspeed commands, not a path to follow. All five executors receive the identical stream and drive the same plant. These are recorded simulator tracks. The ribbon spans the wingtips, so it twists as the aircraft banks.</p>
+    </header>
+
+    <div class="replay">
+      <div class="viewport" id="vp" aria-label="3D replay of the selected maneuver">
+        <div class="vp-hud">
+          <div><span class="big" id="vp-cell">Airship V7 · circle</span><br><span id="vp-cmd">φ* 0.0°</span></div>
+          <div class="r"><span id="vp-grid">grid 50 m</span><br><span id="vp-scale">aircraft drawn ×3</span></div>
+        </div>
+        <div class="vp-hint" id="vp-hint">Drag to orbit · wheel or pinch to zoom</div>
+        <div class="vp-legend" id="vp-legend" hidden>left −50° <i></i> +50° right</div>
+      </div>
+      <aside class="side">
+        <div class="ctrl"><span class="placard">Airframe</span>
+          <div class="seg" id="rp-plane" role="group" aria-label="Airframe">
+            <button type="button" data-v="Airship_V7" aria-pressed="true">Airship V7</button>
+            <button type="button" data-v="Volantex_Ranger" aria-pressed="false">Volantex Ranger</button>
+          </div></div>
+        <div class="ctrl"><span class="placard">Maneuver</span>
+          <div class="seg" id="rp-man" role="group" aria-label="Maneuver">
+            <button type="button" data-v="circle" aria-pressed="true">Circle</button>
+            <button type="button" data-v="figure8" aria-pressed="false">Fig-8</button>
+            <button type="button" data-v="helix" aria-pressed="false">Helix</button>
+            <button type="button" data-v="sturn" aria-pressed="false">S-turn</button>
+          </div></div>
+        <div class="ctrl mblock"><span class="placard">Controllers · bank now</span>
+          <div class="mlist" id="rp-methods"></div></div>
+        <div class="ctrl"><span class="placard">Ribbon colour</span>
+          <div class="seg" id="rp-color" role="group" aria-label="Ribbon colour">
+            <button type="button" data-v="method" aria-pressed="true">Controller</button>
+            <button type="button" data-v="bank" aria-pressed="false">Bank angle</button>
+          </div></div>
+        <div class="ctrl"><span class="placard">Camera</span>
+          <div class="seg" id="rp-cam" role="group" aria-label="Camera">
+            <button type="button" data-v="orbit" aria-pressed="true">Orbit</button>
+            <button type="button" data-v="chase" aria-pressed="false">Chase</button>
+          </div></div>
+      </aside>
+      <div class="transport">
+        <button class="icon-btn" id="rp-play" type="button" aria-label="Pause">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path id="rp-play-icon" d="M4 2h3v12H4zM9 2h3v12H9z" fill="currentColor"/></svg>
+        </button>
+        <span class="time" id="rp-time">0.0 / 0.0 s</span>
+        <label class="sr-only" for="rp-scrub">Time</label>
+        <input type="range" id="rp-scrub" min="0" max="1000" value="0" step="1">
+        <div class="seg" id="rp-speed" role="group" aria-label="Playback speed">
+          <button type="button" data-v="1" aria-pressed="false">1×</button>
+          <button type="button" data-v="4" aria-pressed="true">4×</button>
+          <button type="button" data-v="10" aria-pressed="false">10×</button>
+        </div>
+      </div>
+      <div class="strip">
+        <div class="cell-defs" id="rp-defs"></div>
+        <svg id="rp-strip" role="img" aria-label="Bank angle against time for each controller, with the commanded bank dashed and the tolerance band shaded"></svg>
+      </div>
+    </div>
+    <div class="tbl-wrap" style="margin-top:18px">
+      <table class="data" id="rp-table" aria-label="Published results for the selected cell"></table>
+    </div>
+    <p class="tbl-note" id="rp-note">The replay shows the median run of each cell by bank RMSE: of three training seeds for PPO, SAC and TD3, and of five sampling draws for MPPI. The LQR is deterministic and flown once. The table gives the published mean and spread across all runs.</p>
+  </div>
+</section>
+
+<!-- ═══ RESULTS ═══════════════════════════════════════════════════════════════════════ -->
+<section class="block" id="results">
+  <div class="frame">
+    <header class="sec-head">
+      <p class="placard"><span class="ref">Benchmark</span><span>Altitude · attitude · ground effect · robustness</span></p>
+      <h2>What the benchmark measures</h2>
+      <p class="lede">Every cell runs on identical conditions: the same airframe model, the same actuator and sensor models, the same reference. Learned methods are averaged over <strong>three training seeds</strong>, MPPI over <strong>repeated sampling draws</strong>, and every mean is reported with its spread.</p>
+    </header>
+
+    <!-- altitude -->
+    <div class="sub-head" id="altitude" style="margin-top:0;border-top:0;padding-top:0">
+      <p class="placard"><span class="ref">Task 1</span><span>Altitude acquisition and hold</span></p>
+      <h3>Reach a commanded altitude, then stay there</h3>
+      <p class="lede">Each episode starts 12 to 18 m above or below a commanded altitude between 20 and 100 m, and every controller follows the same rate-limited reference. <strong>Survival</strong> counts episodes that end without a crash or a stall. <strong>Acquisition</strong> counts those that also reach the target and hold it within 1 m.</p>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">
+        <h4>One episode per controller, target 60 m</h4>
+        <div class="ctrl-row">
+          <div class="seg" id="al-plane" role="group" aria-label="Airframe">
+            <button type="button" data-v="Airship_V7" aria-pressed="true">Airship V7</button>
+            <button type="button" data-v="Volantex_Ranger" aria-pressed="false">Volantex Ranger</button>
+          </div>
+          <div class="seg" id="al-case" role="group" aria-label="Initial offset">
+            <button type="button" data-v="climb" aria-pressed="true">Climb +15 m</button>
+            <button type="button" data-v="descent" aria-pressed="false">Descent −15 m</button>
+          </div>
+          <div class="seg" id="al-zoom" role="group" aria-label="Vertical range">
+            <button type="button" data-v="full" aria-pressed="true">Full range</button>
+            <button type="button" data-v="near" aria-pressed="false">Target ±3 m</button>
+          </div>
+          <button class="btn" id="al-fly" type="button">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2.5v11l9-5.5z" fill="currentColor"/></svg>Fly again</button>
+        </div>
+      </div>
+      <div class="chart" id="al-chart"></div>
+      <div class="alt-legend" id="al-legend"></div>
+      <p class="tbl-note">Illustrative single episodes, not the scored protocol (the table below scores 200 episodes per cell). Flown for this page with the shipped checkpoints and the benchmark's own environment and reference: first training seed for the learned policies, sampler seed 0 for MPPI. The dashed line is the commanded reference, ramping at 2 m/s, and the shaded band is the ±1 m capture tolerance.</p>
+    </div>
+
+    <div class="tbl-wrap" style="margin-top:18px">
+      <table class="data" id="alt-table" aria-label="Altitude acquisition and hold results"></table>
+    </div>
+    <p class="tbl-note">Mean ± standard deviation across three training seeds (learned) or three sampling sweeps (MPPI); the LQR is a deterministic law swept once. Error metrics are means over surviving episodes. Learned policies and MPPI are scored on the GPU plant and the LQR on the CPU reference plant, validated to single-step parity.</p>
+
+    <ul class="findings">
+      <li><b><span class="m" style="background:var(--c-ppo)"></span>PPO acquires every episode on both airframes.</b>It is the only method to do so. SAC and TD3 lose 7 to 17&nbsp;% of theirs, and SAC on the V7 survives 0.83 while acquiring only 0.50.</li>
+      <li><b><span class="m" style="background:var(--c-lqr)"></span>The LQR is the most precise, where it arrives.</b>Its settled error on the V7 is 2.8 × 10⁻⁷ m, five orders below the best learned policy. On the Ranger it acquires only half the episodes.</li>
+      <li><b><span class="m" style="background:var(--c-mppi)"></span>MPPI flies through the target.</b>On the V7 it survives 93&nbsp;% of episodes and acquires 1&nbsp;%, overshooting by 41.5 m. Its cost has no vertical-speed term inside a one-second preview, so the built-up climb rate stays invisible.</li>
+    </ul>
+
+    <figure class="plate" style="margin-top:clamp(28px,4vw,44px)">
+      <div class="ctrl-row" style="margin-bottom:4px">
+        <div class="seg" id="av-algo" role="group" aria-label="Policy">
+          <button type="button" data-v="ppo" aria-pressed="true">PPO</button>
+          <button type="button" data-v="sac" aria-pressed="false">SAC</button>
+          <button type="button" data-v="td3" aria-pressed="false">TD3</button>
+        </div>
+        <div class="seg" id="av-plane" role="group" aria-label="Airframe">
+          <button type="button" data-v="Airship_V7" aria-pressed="true">Airship V7</button>
+          <button type="button" data-v="Volantex_Ranger" aria-pressed="false">Volantex Ranger</button>
+        </div>
+      </div>
+      <div class="sheet"><img id="av-img" src="assets/img/altitude-ppo-Airship_V7.webp" width="1800" height="1094" loading="lazy" alt="Altitude sequence figure for the selected policy and airframe: 3D flight paths, commanded against achieved altitude, tracking error over 256 Monte Carlo episodes, side view, and elevator and throttle traces."></div>
+      <figcaption><b>A sequence of targets.</b> Each new altitude target is released only once the current one is held. Panels show the flight paths and side view, commanded against achieved altitude for ten episodes, the tracking error over 256 Monte Carlo episodes with its 10–90&nbsp;% band, and the elevator and throttle of one episode. Elevator activity stays confined to the transients; the throttle carries the trim between them.</figcaption>
+    </figure>
+
+    <!-- attitude -->
+    <div class="sub-head" id="attitude">
+      <p class="placard"><span class="ref">Task 2</span><span>Attitude-command tracking</span></p>
+      <h3>Four maneuvers, bank error in degrees</h3>
+      <p class="lede">Each stream is generated from its own airframe's envelope, so a maneuver name means a comparable difficulty, not a comparable geometry. Each cell gives bank-angle RMSE as mean ± sd across runs and the time spent inside the ±8.6° band. Select a cell to fly it above.</p>
+    </div>
+    <div class="heat" id="heat"></div>
+    <div class="heat-key"><span>lower error</span><i></i><span>higher error (log scale)</span><span class="b"></span><span>best in column</span></div>
+
+    <ul class="findings">
+      <li><b><span class="m" style="background:var(--c-ppo)"></span>PPO stays in the band on all eight cells.</b>Bank RMSE of 0.4 to 2.3°, and the most repeatable: its seed spread never exceeds 0.21°.</li>
+      <li><b><span class="m" style="background:var(--c-mppi)"></span>MPPI is the most accurate where it converges.</b>It holds three V7 maneuvers to 0.2–0.7°. A single flight is one draw, though: five draws of the Ranger s-turn range from 0.3 to 34.3°.</li>
+      <li><b><span class="m" style="background:var(--c-sac)"></span>SAC and TD3 track an order of magnitude looser on the V7.</b>Neither leaves the envelope. SAC fails through a tremor about the command, TD3 through a limit cycle at a 0.6 s lag.</li>
+    </ul>
+
+    <figure class="plate" style="margin-top:clamp(28px,4vw,44px)">
+      <div class="sheet"><img src="assets/img/maneuver-facet-v7.webp" width="1762" height="1260" loading="lazy" alt="Bank tracking on the Airship V7, rows circle, figure-of-eight, helix and s-turn, columns LQR, MPPI, PPO, SAC and TD3, each with commanded bank dashed and the tolerance band shaded."></div>
+      <figcaption><b>How each method fails.</b> Bank tracking on the Airship V7, faceted by executor (LQR, MPPI, PPO, SAC, TD3) because on shared axes the SAC and TD3 traces cover the other three. The LQR holds the command between brief departures where the linearisation about level trim loses the banked state; SAC shows a tremor and TD3 a limit cycle.</figcaption>
+    </figure>
+    <figure class="plate" style="margin-top:clamp(20px,3vw,32px)">
+      <div class="sheet"><img src="assets/img/attitude-exec.webp" width="1576" height="517" loading="lazy" alt="Ground tracks over commanded bank angles for the Airship V7 and the Volantex Ranger, coloured by achieved bank, and the three command channels of the steepest sustained turn."></div>
+      <figcaption><b>The command interface.</b> Ground tracks over commanded bank angles across each airframe's envelope (±45° and ±35°), and the three channels of the steepest turn held for 30 s before levelling out and climbing at 1 m/s. The channel that gives way differs: the V7 sinks below its commanded climb rate, the Ranger loses airspeed.</figcaption>
+    </figure>
+
+    <!-- ground effect -->
+    <div class="sub-head" id="ground-effect">
+      <p class="placard"><span class="ref">Ground effect</span><span>Thrust required against height over span</span></p>
+      <h3>Near the surface, the same flight costs less thrust</h3>
+      <p class="lede">Under a stabilising controller, ground effect changes the thrust needed to fly a trajectory rather than the trajectory itself. Bring the aircraft down toward the water and read the saving at each height-over-span ratio h/b.</p>
+    </div>
+    <div class="ge">
+      <div class="panel ge-scene">
+        <div class="panel-head">
+          <h4 id="ge-title">Airship V7 · front view, to scale</h4>
+          <div class="seg" id="ge-plane" role="group" aria-label="Airframe">
+            <button type="button" data-v="Airship_V7" aria-pressed="true">V7</button>
+            <button type="button" data-v="Airship_A0S" aria-pressed="false">A0S</button>
+            <button type="button" data-v="Volantex_Ranger" aria-pressed="false">Ranger</button>
+          </div>
+        </div>
+        <svg id="ge-svg" viewBox="0 0 560 300" role="img" aria-label="Front view of the aircraft above the water at the selected height, with its mirror image below the surface"></svg>
+        <label class="sr-only" for="ge-hb">Height over span</label>
+        <input type="range" id="ge-hb" min="0" max="5" step="1" value="0">
+        <div class="hb-stops"><span>0.25</span><span>0.5</span><span>1</span><span>2</span><span>3</span><span>6</span></div>
+        <div class="ge-read" id="ge-read"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h4>Change in thrust to hold altitude</h4></div>
+        <div class="chart" id="ge-chart"></div>
+        <div class="chart-legend">
+          <span style="color:var(--accent)"><i></i>trim, no controller</span>
+          <span style="color:var(--c-ppo)"><i class="dash"></i>policy holding the band</span>
+          <span style="color:var(--fg-dim)"><i class="dot2"></i>lifting-line theory</span>
+        </div>
+        <div class="prose" style="margin-top:1rem;font-size:0.95rem">
+          <p>The measured saving exceeds the prediction because the prediction holds the lift coefficient fixed while the aircraft re-trims. Ground effect raises lift, the trim angle of attack falls and drag falls further: with the V7 angle of attack frozen at its out-of-ground-effect <span class="num">2.14°</span> the drag is <span class="num">57.8 N</span>, against <span class="num">54.4 N</span> when it re-trims to <span class="num">1.68°</span>.</p>
+          <p>Settled altitude error stays below <span class="num">0.19 m</span> on the V7 and <span class="num">0.03 m</span> on the Ranger with the correction on or off. The A0S is offered 22.5&nbsp;% at h/b = 0.25, but its altitude policy does not hold any band below h/b = 2.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- robustness -->
+    <div class="sub-head" id="robustness">
+      <p class="placard"><span class="ref">Robustness</span><span>PPO attitude executor · four disturbance families</span></p>
+      <h3>Noise is free, latency is expensive, wind ends runs</h3>
+      <p class="lede">The PPO executor flies all four maneuvers under one disturbance family at a time, at three severities set in physical units. A disturbance corrupts what the policy sees or commands; every metric comes from the true simulator state.</p>
+    </div>
+    <div class="two">
+      <div class="panel"><div class="panel-head"><h4>Airship V7</h4></div><div class="chart" id="rb-v7"></div></div>
+      <div class="panel"><div class="panel-head"><h4>Volantex Ranger</h4></div><div class="chart" id="rb-vr"></div></div>
+    </div>
+    <div class="chart-legend" style="margin-top:0.9rem">
+      <span style="color:var(--s-noise)"><i></i>sensor noise</span>
+      <span style="color:var(--s-sdelay)"><i></i>sensor delay</span>
+      <span style="color:var(--s-adelay)"><i></i>action delay</span>
+      <span style="color:var(--s-turb)"><i></i>Dryden turbulence</span>
+    </div>
+    <div class="tbl-wrap" style="margin-top:18px">
+      <table class="data" aria-label="Disturbance severities">
+        <thead><tr><th>Family</th><th>Mild</th><th>Medium</th><th>Severe</th><th>Models</th></tr></thead>
+        <tbody>
+          <tr><td class="mname">Sensor noise</td><td>φ,θ 0.5° · p,q,r 1°/s</td><td>1.0° · 2°/s</td><td>2.0° · 5°/s</td><td style="text-align:left">Gaussian floors per channel, also on V<sub>a</sub>, α, β, ż</td></tr>
+          <tr><td class="mname">Sensor delay</td><td>20 ms</td><td>40 ms</td><td>80 ms</td><td style="text-align:left">Estimator and sensor-pipeline latency</td></tr>
+          <tr><td class="mname">Action delay</td><td>20 ms</td><td>50 ms</td><td>100 ms</td><td style="text-align:left">Flight computer, link and servo dead-time</td></tr>
+          <tr><td class="mname">Turbulence</td><td>σ<sub>u</sub>/V<sub>a</sub> 0.05</td><td>0.10</td><td>0.15</td><td style="text-align:left">Six-component Dryden field, MIL-F-8785C</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <ul class="findings">
+      <li><b>Sensor noise costs almost nothing.</b>Bank RMSE holds at 2.0° on the V7 and moves from 1.3 to 1.4° on the Ranger across the whole grid: the executor averages over a state it can see repeatedly.</li>
+      <li><b>Both latencies cost the same.</b>At the severe grid the V7 reaches 20.6° (sensor) and 21.7° (action), an order of magnitude above nominal. This is the classical dead-time penalty on an attitude loop.</li>
+      <li><b>The airframe reorders the families.</b>The Ranger absorbs both latencies to the medium grid with no loss, yet departs first in wind: all four maneuvers end early at σ<sub>u</sub>/V<sub>a</sub> = 0.15.</li>
+    </ul>
+
+    <!-- ranking -->
+    <div class="sub-head" id="ranking">
+      <p class="placard"><span class="ref">Synthesis</span><span>Ranks from the altitude and attitude tables</span></p>
+      <h3>No method orders consistently</h3>
+      <p class="lede">Rank the five controllers on four criteria taken from the two tables and the order changes at every step. MPPI is the most accurate attitude executor yet acquires neither commanded altitude. The LQR is the most precise regulator yet acquires half the episodes on one airframe. PPO is the most consistent rather than the most accurate.</p>
+    </div>
+    <div class="panel">
+      <div class="chart" id="bump"></div>
+      <p class="tbl-note" id="bump-note"></p>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ SIMULATOR ═════════════════════════════════════════════════════════════════════ -->
+<section class="block" id="simulator">
+  <div class="frame">
+    <header class="sec-head">
+      <p class="placard"><span class="ref">Simulator</span><span>Environment module</span></p>
+      <h2>Inside the plant</h2>
+      <p class="lede">Full 6-DoF rigid-body dynamics in a north-east-down frame, with OpenVSP-derived aerodynamics, semi-empirical ground effect, actuator dynamics, configurable sensors and Dryden turbulence. The CPU reference, PyTorch and Warp backends implement the same equations, validated to <strong>single-step parity</strong>.</p>
+    </header>
+
+    <div class="phys">
+      <div>
+        <h4>Rigid body</h4>
+        <div class="eq"><math display="block"><mrow><mi>m</mi><mover><mi mathvariant="bold">v</mi><mo>˙</mo></mover><mo>=</mo><msub><mi mathvariant="bold">F</mi><mi>g</mi></msub><mo>+</mo><msub><mi mathvariant="bold">F</mi><mi>a</mi></msub><mo>+</mo><msub><mi mathvariant="bold">F</mi><mi>t</mi></msub><mo>−</mo><mi mathvariant="bold">ω</mi><mo>×</mo><mi>m</mi><mi mathvariant="bold">v</mi></mrow></math>
+        <math display="block"><mrow><mi mathvariant="bold">J</mi><mover><mi mathvariant="bold">ω</mi><mo>˙</mo></mover><mo>=</mo><msub><mi mathvariant="bold">τ</mi><mi>a</mi></msub><mo>+</mo><msub><mi mathvariant="bold">τ</mi><mi>t</mi></msub><mo>−</mo><mi mathvariant="bold">ω</mi><mo>×</mo><mi mathvariant="bold">J</mi><mi mathvariant="bold">ω</mi></mrow></math></div>
+        <p>Newton–Euler equations in the body frame, attitude as a unit quaternion, integrated at Δt = 10 ms with Euler or RK4.</p>
+      </div>
+      <div>
+        <h4>Aerodynamics</h4>
+        <div class="eq"><math display="block"><mrow><msub><mi mathvariant="bold">F</mi><mtext>aero</mtext></msub><mo>=</mo><mover><mi>q</mi><mo>¯</mo></mover><mi>S</mi><msup><mrow><mo>[</mo><mo>−</mo><msub><mi>C</mi><mi>D</mi></msub><mo>,</mo><msub><mi>C</mi><mi>Y</mi></msub><mo>,</mo><mo>−</mo><msub><mi>C</mi><mi>L</mi></msub><mo>]</mo></mrow><mo>⊤</mo></msup><mo>,</mo><mspace width="0.5em"/><mover><mi>q</mi><mo>¯</mo></mover><mo>=</mo><mfrac><mn>1</mn><mn>2</mn></mfrac><mi>ρ</mi><msubsup><mi>V</mi><mi>a</mi><mn>2</mn></msubsup></mrow></math></div>
+        <p>Coefficients in α, β and surface deflection, computed from each airframe's OpenVSP model and fitted to polynomials that run inside GPU kernels.</p>
+      </div>
+      <div>
+        <h4>Ground effect</h4>
+        <div class="eq"><math display="block"><mrow><msub><mi>C</mi><mi>L</mi></msub><mo>=</mo><msubsup><mi>C</mi><mi>L</mi><mi>∞</mi></msubsup><mo>(</mo><mn>1</mn><mo>+</mo><msub><mi>μ</mi><mi>L</mi></msub><mo>)</mo></mrow></math>
+        <math display="block"><mrow><msub><mi>C</mi><mi>D</mi></msub><mo>=</mo><msubsup><mi>C</mi><mi>D</mi><mi>∞</mi></msubsup><mo>(</mo><mn>1</mn><mo>−</mo><msub><mi>μ</mi><mi>D</mi></msub><mo>)</mo><msup><mrow><mo>(</mo><mn>1</mn><mo>+</mo><msub><mi>μ</mi><mi>L</mi></msub><mo>)</mo></mrow><mn>2</mn></msup></mrow></math></div>
+        <p>Phillips–Hunsaker lifting-line corrections, with μ<sub>L</sub>, μ<sub>D</sub> functions of h/b, taper and aspect ratio. Closed form, so no panel method or CFD in the loop.</p>
+      </div>
+      <div>
+        <h4>Actuators</h4>
+        <div class="eq"><math display="block"><mrow><mi>H</mi><mo>(</mo><mi>s</mi><mo>)</mo><mo>=</mo><mfrac><msubsup><mi>ω</mi><mi>n</mi><mn>2</mn></msubsup><mrow><msup><mi>s</mi><mn>2</mn></msup><mo>+</mo><mn>2</mn><mi>ζ</mi><msub><mi>ω</mi><mi>n</mi></msub><mi>s</mi><mo>+</mo><msubsup><mi>ω</mi><mi>n</mi><mn>2</mn></msubsup></mrow></mfrac><mo>,</mo><mspace width="0.6em"/><mfrac><mn>1</mn><mrow><mi>τ</mi><mi>s</mi><mo>+</mo><mn>1</mn></mrow></mfrac></mrow></math></div>
+        <p>Servos second order at ω<sub>n</sub> = 10 rad/s, ζ = 1/√2; motors first order with τ = 0.2 s electric and 3 s piston. Saturation at ±20° elevator, ±15° aileron and rudder.</p>
+      </div>
+      <div>
+        <h4>Propulsion</h4>
+        <div class="eq"><math display="block"><mrow><mi>T</mi><mo>=</mo><mfrac><mn>1</mn><mn>2</mn></mfrac><mi>ρ</mi><msub><mi>S</mi><mi>p</mi></msub><msub><mi>C</mi><mi>p</mi></msub><msub><mi>V</mi><mi>d</mi></msub><mo>(</mo><msub><mi>V</mi><mi>d</mi></msub><mo>−</mo><msub><mi>V</mi><mi>a</mi></msub><mo>)</mo><mo>,</mo><mspace width="0.4em"/><msub><mi>V</mi><mi>d</mi></msub><mo>=</mo><msub><mi>V</mi><mi>a</mi></msub><mo>+</mo><msub><mi>δ</mi><mi>t</mi></msub><mo>(</mo><msub><mi>k</mi><mi>m</mi></msub><mo>−</mo><msub><mi>V</mi><mi>a</mi></msub><mo>)</mo></mrow></math></div>
+        <p>Propeller momentum theory with per-airframe constants. Per-motor throttle, mounting and spin direction give differential thrust and torque reaction.</p>
+      </div>
+      <div>
+        <h4>Atmosphere and wind</h4>
+        <div class="eq"><math display="block"><mrow><msub><mi>L</mi><mi>u</mi></msub><mo>=</mo><msub><mi>L</mi><mi>v</mi></msub><mo>=</mo><mfrac><mi>h</mi><msup><mrow><mo>(</mo><mn>0.177</mn><mo>+</mo><mn>0.000823</mn><mi>h</mi><mo>)</mo></mrow><mn>1.2</mn></msup></mfrac><mo>,</mo><mspace width="0.4em"/><msub><mi>σ</mi><mi>w</mi></msub><mo>=</mo><mn>0.1</mn><msub><mi>W</mi><mn>20</mn></msub></mrow></math></div>
+        <p>Dryden turbulence per MIL-F-8785C, scale lengths re-evaluated every step at the current altitude. Constant wind and ISA density. Off during training unless randomisation is requested.</p>
+      </div>
+    </div>
+
+    <!-- sensors -->
+    <div class="sub-head" id="sensors">
+      <p class="placard"><span class="ref">Sensors</span><span>GPS · attitude · gyroscope</span></p>
+      <h3>What the controller actually sees</h3>
+      <p class="lede">Each sensor channel can carry noise, bias, scale-factor error, quantisation, a reduced sample rate and transport delay. The trace below is the commanded-bank response of the PPO executor on the V7 figure-of-eight; move the sliders to degrade its measurement. The degradation is drawn in the browser to illustrate the sensor model; it is not a simulator rollout.</p>
+    </div>
+    <div class="sensor">
+      <div class="panel">
+        <canvas id="sn-canvas" aria-label="True bank angle and the degraded measurement over twenty seconds"></canvas>
+        <div class="chart-legend">
+          <span style="color:var(--fg-faint)"><i></i>true roll φ</span>
+          <span style="color:var(--accent)"><i></i>measured</span>
+        </div>
+      </div>
+      <div class="sliders">
+        <div class="sl"><label for="sn-noise">Noise σ</label><output id="sn-noise-o">0.0°</output><input type="range" id="sn-noise" min="0" max="4" step="0.1" value="1"></div>
+        <div class="sl"><label for="sn-bias">Bias</label><output id="sn-bias-o">0.0°</output><input type="range" id="sn-bias" min="-6" max="6" step="0.5" value="0"></div>
+        <div class="sl"><label for="sn-scale">Scale-factor error</label><output id="sn-scale-o">0&nbsp;%</output><input type="range" id="sn-scale" min="-25" max="25" step="1" value="0"></div>
+        <div class="sl"><label for="sn-quant">Quantisation step</label><output id="sn-quant-o">0.0°</output><input type="range" id="sn-quant" min="0" max="5" step="0.25" value="0"></div>
+        <div class="sl"><label for="sn-rate">Sample rate</label><output id="sn-rate-o">100 Hz</output><input type="range" id="sn-rate" min="0" max="5" step="1" value="2"></div>
+        <div class="sl"><label for="sn-delay">Transport delay</label><output id="sn-delay-o">0 ms</output><input type="range" id="sn-delay" min="0" max="300" step="10" value="80"></div>
+      </div>
+    </div>
+
+    <!-- throughput -->
+    <div class="sub-head" id="throughput">
+      <p class="placard"><span class="ref">GPU backend performance</span><span>RTX 4090 · Ryzen 9 7950X · 10 CUDA-fenced trials</span></p>
+      <h3>Simulation stops being the bottleneck</h3>
+      <p class="lede">The Warp backend scales near-linearly across the widths RL training uses and peaks near 2 × 10⁵ environments before it becomes bandwidth-bound. Simulation then accounts for under 10&nbsp;% of training wall clock; gradient updates set the rest.</p>
+    </div>
+    <div class="two">
+      <div class="panel" style="grid-column:1 / -1">
+        <div class="chart" id="tp-chart"></div>
+        <div class="chart-legend">
+          <span style="color:var(--c-ppo)"><i></i>Warp, fused kernels</span>
+          <span style="color:var(--c-sac)"><i></i>PyTorch, same physics</span>
+          <span style="color:var(--fg-dim)"><i></i>NumPy CPU, one process per env</span>
+          <span style="color:var(--c-mppi)">★ NeuralPlane, published at 10⁶ envs</span>
+        </div>
+      </div>
+    </div>
+    <div class="tbl-wrap" style="margin-top:18px">
+      <table class="data" aria-label="Throughput by backend">
+        <thead><tr><th>Backend</th><th>Envs</th><th>Env-steps / s</th><th>Speed-up vs one CPU env</th></tr></thead>
+        <tbody>
+          <tr><td class="mname">Python / SciPy, CPU</td><td>1</td><td>589</td><td>1×</td></tr>
+          <tr><td class="mname">PyTorch, GPU</td><td>16,384</td><td>2,586,610</td><td>4,390×</td></tr>
+          <tr><td class="mname">Warp, GPU</td><td>16,384</td><td>19,461,717</td><td>33,029×</td></tr>
+          <tr><td class="mname">Warp, GPU</td><td>262,144</td><td>73,640,000</td><td><span class="tag warn">peak</span></td></tr>
+          <tr><td class="mname">Warp, GPU</td><td>1,048,576</td><td>67,070,000</td><td><span class="tag warn">13.4× NeuralPlane</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- validation -->
+    <div class="sub-head" id="validation">
+      <p class="placard"><span class="ref">Cross-simulator validation</span><span>JSBSim · X-Plane</span></p>
+      <h3>Checked against two independent simulators</h3>
+      <p class="lede">With ground effect off, free-flight trajectories match JSBSim almost exactly. With it on at 1 m, they diverge in the way the physics predicts, because JSBSim does not model ground effect.</p>
+    </div>
+    <div class="two">
+      <div class="tbl-wrap">
+        <table class="data" aria-label="Pearson correlation with JSBSim">
+          <thead><tr><th>Zero-input free flight</th><th>Altitude</th><th>Pitch rate</th><th>Airspeed</th></tr></thead>
+          <tbody>
+            <tr><td class="mname">h₀ = 1 m, ground effect on</td><td>0.9999</td><td>0.9989</td><td><span class="tag warn">0.9480</span></td></tr>
+            <tr><td class="mname">h₀ = 1 m, ground effect off</td><td>0.9999</td><td>0.9999</td><td>0.9999</td></tr>
+            <tr><td class="mname">h₀ = 10 m</td><td>1.0000</td><td>0.9885</td><td>0.9997</td></tr>
+            <tr><td class="mname">h₀ = 100 m</td><td>0.9996</td><td>0.9975</td><td>0.9973</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="prose">
+        <p><strong>JSBSim.</strong> Pearson correlation between the two simulators under identical zero-input conditions. The lower airspeed correlation with ground effect on is the altered drag that JSBSim does not reproduce, which isolates the correction as an aerodynamic effect rather than a numerical artefact.</p>
+        <p><strong>X-Plane.</strong> Its flight model is closed, so the test is controller transfer: a controller tuned in FALCON-S is closed around the X-Plane aircraft through XPlaneConnect, from the same configuration and initial conditions. The same interface renders the footage at the top of this page.</p>
+        <p>Both harnesses are in the repository: <a href="https://anonymous.4open.science/r/rl-control-wig-aircrafts-1D52/tools/jsbsim_validate/" target="_blank" rel="noopener"><code>tools/jsbsim_validate</code></a> and <a href="https://anonymous.4open.science/r/rl-control-wig-aircrafts-1D52/tools/xplane/" target="_blank" rel="noopener"><code>tools/xplane</code></a>.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ AIRFRAMES ═════════════════════════════════════════════════════════════════════ -->
+<section class="block" id="airframes">
+  <div class="frame">
+    <header class="sec-head">
+      <p class="placard"><span class="ref">Airframes</span><span>JSON configuration · OpenVSP geometry</span></p>
+      <h2>Five airframes, from a 1.6 m RC plane to a light aircraft</h2>
+      <p class="lede">Each airframe is a JSON file: geometry, mass and inertia, control-surface layout, propulsion and sensors. The benchmark tables use the <strong>Airship V7</strong>, the ground-effect prototype the framework was built around, and the <strong>Volantex Ranger</strong>, a widely flown electric RC airframe. Wingspans below are drawn to one scale.</p>
+    </header>
+    <div class="fleet" id="fleet"></div>
+  </div>
+</section>
+
+<!-- ═══ CODE ══════════════════════════════════════════════════════════════════════════ -->
+<section class="block" id="code">
+  <div class="frame">
+    <header class="sec-head">
+      <p class="placard"><span class="ref">Get started</span><span>Python 3.10 · CUDA 12.6 · MIT licence</span></p>
+      <h2>Train, evaluate, reproduce</h2>
+      <p class="lede">The Warp plant needs an NVIDIA GPU; <code>falcons check</code> and the NumPy reference plant run without one. Runtimes below are for an RTX 4090.</p>
+    </header>
+    <div class="code-grid">
+      <div class="code"><header><span class="placard">Install</span><button class="copy" type="button" data-copy="c1">Copy</button></header>
+<pre id="c1"><span class="c"># anonymized repository, as a ZIP</span>
+<span class="p">$ </span>curl -L -o falcon-s.zip \
+    https://anonymous.4open.science/api/repo/rl-control-wig-aircrafts-1D52/zip
+<span class="p">$ </span>unzip falcon-s.zip -d falcon-s && cd falcon-s
+<span class="p">$ </span>bash scripts/setup_venv.sh
+<span class="c"># venv, lockfile, editable install, falcons check</span>
+
+<span class="c"># or in Docker</span>
+<span class="p">$ </span>docker build -t falcons .
+<span class="p">$ </span>docker run --rm --gpus all falcons</pre></div>
+      <div class="code"><header><span class="placard">Train and evaluate</span><button class="copy" type="button" data-copy="c2">Copy</button></header>
+<pre id="c2"><span class="c"># 3 algorithms × 2 tasks × 5 airframes × any seed</span>
+<span class="p">$ </span>falcons train --algo ppo --task altitude \
+    --plane Airship_V7 --seed 0
+
+<span class="c"># learned or classical, same interface</span>
+<span class="p">$ </span>falcons eval --algo ppo --task altitude \
+    --plane Airship_V7 --plot
+<span class="p">$ </span>falcons eval --algo mppi --task attitude \
+    --plane Volantex_Ranger --maneuver circle</pre></div>
+      <div class="code"><header><span class="placard">Benchmark and reproduce</span><button class="copy" type="button" data-copy="c3">Copy</button></header>
+<pre id="c3"><span class="p">$ </span>falcons benchmark altitude       <span class="c"># 2 h 11</span>
+<span class="p">$ </span>falcons benchmark maneuvers --refresh <span class="c"># 21 min</span>
+<span class="p">$ </span>falcons benchmark ground-effect  <span class="c"># 3 min</span>
+<span class="p">$ </span>falcons benchmark robustness     <span class="c"># 9 min</span>
+<span class="p">$ </span>falcons benchmark throughput     <span class="c"># 6 min</span>
+<span class="p">$ </span>falcons tables
+<span class="p">$ </span>falcons reproduce --out DIR
+<span class="c"># re-fly everything, diff against results/</span></pre></div>
+    </div>
+    <div class="repro">
+      <div><b>Deterministic rows return bit-identical.</b>Every learned-policy row and every LQR row of the shipped tables re-flies to the same bits from the 39 checkpoints.</div>
+      <div><b>Sampling planners are gated by their spread.</b>An MPPI cell is a draw, so each metric carries its own standard deviation and a re-run must land within 3σ of the shipped value.</div>
+      <div><b>One inner loop.</b><code>eval</code> is the loop <code>benchmark</code> composes, so a cell printed by <code>eval</code> is the cell that lands in the table.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ CITE ══════════════════════════════════════════════════════════════════════════ -->
+<section class="block" id="cite">
+  <div class="frame">
+    <header class="sec-head">
+      <p class="placard"><span class="ref">Citation</span></p>
+      <h2>BibTeX</h2>
+    </header>
+    <div class="code" style="max-width:860px"><header><span class="placard">anonymous2026falcons</span><button class="copy" type="button" data-copy="bib">Copy</button></header>
+<pre id="bib">@misc{anonymous2026falcons,
+  title  = {{FALCON-S}: Fixed-wing ground-effect Aerodynamics
+            Simulator and Flight Control Learning Suite},
+  author = {Anonymous},
+  year   = {2026},
+  note   = {Under double-blind review},
+  url    = {https://anonymous.4open.science/r/rl-control-wig-aircrafts-1D52}
+}</pre></div>
+  </div>
+</section>
+
+</main>
+
+<footer class="site">
+  <div class="frame">
+    <span>FALCON-S · MIT licence · <a href="https://anonymous.4open.science/r/rl-control-wig-aircrafts-1D52/" target="_blank" rel="noopener">anonymized repository</a></span>
+    <span>Tables: the published results in <code>tests/golden</code>. 3D replay: flight traces written to <code>results/traces</code> by <code>falcons benchmark maneuvers --refresh</code>. Altitude episodes: flown with the shipped checkpoints.</span>
+  </div>
+</footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+/* FALCON-S project page: shared helpers, charts and widgets. The 3D replay lives in replay.js.
+   Every number drawn here is read from data/*.json, which website/tools/build_data.py builds
+   from tests/golden (the published tables) and results/ (the shipped run). */
+(function () {
+  "use strict";
+
+  // ── shared ──────────────────────────────────────────────────────────────────────────────
+  const ORDER = ["ppo", "sac", "td3", "lqr", "mppi"];
+  const METHOD = {
+    ppo: { name: "PPO", c: "var(--c-ppo)", tok: "--c-ppo", kind: "on-policy RL" },
+    sac: { name: "SAC", c: "var(--c-sac)", tok: "--c-sac", kind: "off-policy RL" },
+    td3: { name: "TD3", c: "var(--c-td3)", tok: "--c-td3", kind: "off-policy RL" },
+    lqr: { name: "LQR", c: "var(--c-lqr)", tok: "--c-lqr", kind: "LQR with integral action" },
+    mppi: { name: "MPPI", c: "var(--c-mppi)", tok: "--c-mppi", kind: "sampling planner" },
+  };
+  const PLANE = {
+    Airship_V7: "Airship V7", Airship_A0S: "Airship A0S", Volantex_Ranger: "Volantex Ranger",
+    Navion: "Navion", Cirrus_SR22: "Cirrus SR22",
+  };
+  const MAN = { circle: "Circle", figure8: "Figure-8", helix: "Helix", sturn: "S-turn" };
+  const MANS = ["circle", "figure8", "helix", "sturn"];
+
+  const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  const $ = (s, r = document) => r.querySelector(s);
+  const el = (tag, attrs = {}, html) => {
+    const e = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs)) {
+      if (k === "style") e.style.cssText = v; else e.setAttribute(k, v);
+    }
+    if (html !== undefined) e.innerHTML = html;
+    return e;
+  };
+  const getJSON = (p) => fetch(p).then((r) => {
+    if (!r.ok) throw new Error(`${p}: HTTP ${r.status}`);
+    return r.json();
+  });
+
+  // segmented control: buttons with data-v and aria-pressed
+  function seg(root, onChange) {
+    if (!root) return { set() {}, get() {} };
+    const btns = [...root.querySelectorAll("button")];
+    const api = {
+      get: () => btns.find((b) => b.getAttribute("aria-pressed") === "true")?.dataset.v,
+      set(v, quiet) {
+        btns.forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.v === v)));
+        if (!quiet) onChange(v);
+      },
+    };
+    btns.forEach((b) => b.addEventListener("click", () => api.set(b.dataset.v)));
+    return api;
+  }
+
+  // re-render a chart whenever its container changes width
+  function responsive(node, render) {
+    let w = 0, raf = 0;
+    const ro = new ResizeObserver(() => {
+      const nw = Math.round(node.clientWidth);
+      if (nw === w || nw === 0) return;
+      w = nw;
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(render);
+    });
+    ro.observe(node);
+    return render;
+  }
+
+  const themeListeners = [];
+  const onTheme = (f) => themeListeners.push(f);
+  const fireTheme = () => themeListeners.forEach((f) => f());
+
+  const fmt = {
+    pm: (v, s, d = 2) => (v == null ? "—" : s == null ? v.toFixed(d) : `${v.toFixed(d)}<span class="pm"> ± ${s.toFixed(d)}</span>`),
+    sci(v) {
+      if (v == null) return "—";
+      if (v >= 0.001) return v.toFixed(3);
+      const e = Math.floor(Math.log10(v));
+      const m = v / 10 ** e;
+      const sup = String(e).replace(/-/g, "⁻").replace(/\d/g, (d) => "⁰¹²³⁴⁵⁶⁷⁸⁹"[d]);
+      return `${m.toFixed(1)}×10${sup}`;
+    },
+    pct: (v, d = 1) => `${v > 0 ? "+" : v < 0 ? "−" : ""}${Math.abs(v).toFixed(d)}\u00a0%`,
+  };
+
+  window.FS = { ORDER, METHOD, PLANE, MAN, MANS, css, $, el, seg, responsive, onTheme, fmt, getJSON };
+
+  // ── theme toggle ────────────────────────────────────────────────────────────────────────
+  (function theme() {
+    const btn = $("#theme-btn"), lab = $("#theme-label");
+    const root = document.documentElement;
+    const states = ["auto", "light", "dark"];
+    let cur = "auto";
+    try { cur = localStorage.getItem("falcons-theme") || "auto"; } catch (e) { /* storage blocked */ }
+    const apply = (s) => {
+      cur = s;
+      if (s === "auto") root.removeAttribute("data-theme"); else root.setAttribute("data-theme", s);
+      lab.textContent = s;
+      try { localStorage.setItem("falcons-theme", s); } catch (e) { /* storage blocked */ }
+      fireTheme();
+    };
+    if (cur !== "auto") apply(cur);
+    btn.addEventListener("click", () => apply(states[(states.indexOf(cur) + 1) % states.length]));
+    matchMedia("(prefers-color-scheme: light)").addEventListener("change", fireTheme);
+    new MutationObserver(fireTheme).observe(root, { attributes: true, attributeFilter: ["data-theme"] });
+  })();
+
+  // ── section highlighting in the top bar ─────────────────────────────────────────────────
+  (function navSpy() {
+    const links = [...document.querySelectorAll(".topbar nav a")];
+    const map = new Map(links.map((a) => [a.getAttribute("href").slice(1), a]));
+    const io = new IntersectionObserver((ents) => {
+      ents.forEach((e) => {
+        if (!e.isIntersecting) return;
+        const a = map.get(e.target.id);
+        if (!a) return;
+        links.forEach((l) => l.removeAttribute("aria-current"));
+        a.setAttribute("aria-current", "true");
+      });
+    }, { rootMargin: "-45% 0px -50% 0px" });
+    map.forEach((_, id) => { const s = document.getElementById(id); if (s) io.observe(s); });
+  })();
+
+  // ── copy buttons ────────────────────────────────────────────────────────────────────────
+  document.querySelectorAll(".copy").forEach((b) => {
+    b.addEventListener("click", () => {
+      const pre = document.getElementById(b.dataset.copy);
+      const text = pre.textContent.split("\n").map((l) => l.replace(/^\$ /, "")).join("\n");
+      const done = () => { b.textContent = "Copied"; b.classList.add("ok"); setTimeout(() => { b.textContent = "Copy"; b.classList.remove("ok"); }, 1600); };
+      const fallback = () => {
+        const r = document.createRange(); r.selectNodeContents(pre);
+        const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+        b.textContent = "Selected";
+        setTimeout(() => { b.textContent = "Copy"; }, 1600);
+      };
+      try { navigator.clipboard.writeText(text).then(done, fallback); } catch (e) { fallback(); }
+    });
+  });
+
+  // ── altitude figure plate toggle ────────────────────────────────────────────────────────
+  (function altPlate() {
+    const img = $("#av-img");
+    let algo = "ppo", plane = "Airship_V7";
+    const upd = () => {
+      img.src = `assets/img/altitude-${algo}-${plane}.webp`;
+      img.alt = `Altitude sequence figure for ${METHOD[algo].name} on the ${PLANE[plane]}.`;
+    };
+    seg($("#av-algo"), (v) => { algo = v; upd(); });
+    seg($("#av-plane"), (v) => { plane = v; upd(); });
+  })();
+
+  // ── data ────────────────────────────────────────────────────────────────────────────────
+  FS.resultsP = getJSON("data/results.json");
+  const dataP = Promise.all([
+    FS.resultsP, getJSON("data/altitude_replay.json"),
+    getJSON("data/throughput.json"),
+  ]);
+  FS.maneuversP = getJSON("data/maneuvers.json");
+
+  dataP.then(([res, alt, tp]) => {
+    altitudeReplay(alt);
+    altitudeTable(res.altitude);
+    heatmap(res.maneuvers);
+    groundEffect(res.ge_trim, res.ge_closed, res.airframes);
+    robustness(res.robustness);
+    bump(res.altitude, res.maneuvers);
+    throughput(tp);
+    fleet(res.airframes);
+  }).catch((err) => {
+    console.error(err);
+    document.querySelectorAll(".chart:empty").forEach((c) => {
+      c.innerHTML = `<p class="tbl-note">Charts load their data from <code>data/</code>. Serve the page over HTTP (for example <code>python -m http.server</code> in the page folder) rather than opening the file directly.</p>`;
+    });
+  });
+  FS.maneuversP.then(sensors).catch((e) => console.error(e));
+
+  // ── altitude replay chart ───────────────────────────────────────────────────────────────
+  function altitudeReplay(D) {
+    const host = $("#al-chart"), legend = $("#al-legend");
+    let plane = "Airship_V7", kase = "climb", zoom = "full";
+    let tNow = D.steps * D.dt, raf = 0;
+    const T = D.target, dt = D.dt, N = D.steps, Tend = N * dt;
+
+    function series(m) {
+      const r = D.planes[plane].runs[m][kase];
+      const pts = [];
+      for (let i = 0; i < r.h.length; i++) if (r.h[i] != null) pts.push([i * dt, r.h[i]]);
+      return { m, r, pts };
+    }
+    function status(r) {
+      const n = r.h.filter((v) => v != null);
+      const fin = n[n.length - 1];
+      if (!r.survived) return { cls: "bad", txt: `lost at ${r.t_end.toFixed(1)} s` };
+      const tail = r.h.slice(Math.floor(0.6 * N)).filter((v) => v != null);
+      const rmse = Math.sqrt(tail.reduce((a, v) => a + (v - T) ** 2, 0) / tail.length);
+      const rs = rmse < 0.0005 ? "under 1 mm" : rmse < 0.1 ? `${(rmse * 1000).toFixed(0)} mm` : `${rmse.toFixed(2)} m`;
+      if (Math.abs(fin - T) <= 1) return { cls: "good", txt: `held · settled RMSE ${rs}` };
+      return { cls: "warn", txt: `ends at ${fin.toFixed(1)} m, ${Math.abs(fin - T).toFixed(1)} m off` };
+    }
+
+    const render = () => {
+      const W = host.clientWidth, H = Math.max(260, Math.min(380, W * 0.46));
+      const m = { l: 44, r: 16, t: 14, b: 32 };
+      const S = ORDER.map(series);
+      const h0 = kase === "climb" ? T - D.offset : T + D.offset;
+      const rate = D.planes[plane].ref_rate;
+      let lo, hi;
+      if (zoom === "near") { lo = T - 3; hi = T + 3; } else {
+        const all = S.flatMap((s) => s.pts.map((p) => p[1]));
+        lo = Math.max(0, Math.min(d3.min(all), T - 18) - 4); hi = Math.max(d3.max(all), T + 18) + 4;
+      }
+      const x = d3.scaleLinear([0, Tend], [m.l, W - m.r]);
+      const y = d3.scaleLinear([lo, hi], [H - m.b, m.t]).nice();
+      const svg = d3.create("svg").attr("viewBox", `0 0 ${W} ${H}`).attr("width", W).attr("height", H)
+        .attr("role", "img").attr("aria-label", "Altitude against time for five controllers");
+      const cid = "alclip" + Math.random().toString(36).slice(2, 7);
+      svg.append("defs").append("clipPath").attr("id", cid).append("rect")
+        .attr("x", m.l).attr("y", m.t).attr("width", W - m.l - m.r).attr("height", H - m.t - m.b);
+      svg.append("g").attr("class", "grid").attr("transform", `translate(${m.l},0)`)
+        .call(d3.axisLeft(y).ticks(6).tickSize(-(W - m.l - m.r)).tickFormat(""));
+      svg.append("g").attr("class", "axis").attr("transform", `translate(0,${H - m.b})`)
+        .call(d3.axisBottom(x).ticks(W < 500 ? 6 : 12).tickFormat((d) => `${d}`));
+      svg.append("g").attr("class", "axis").attr("transform", `translate(${m.l},0)`).call(d3.axisLeft(y).ticks(6));
+      svg.append("text").attr("x", W - m.r).attr("y", H - 4).attr("text-anchor", "end").text("time [s]");
+      svg.append("text").attr("x", m.l + 4).attr("y", m.t + 10).text("altitude [m]");
+      const g = svg.append("g").attr("clip-path", `url(#${cid})`);
+      g.append("rect").attr("x", m.l).attr("width", W - m.l - m.r).attr("y", y(T + 1)).attr("height", Math.max(1, y(T - 1) - y(T + 1)))
+        .style("fill", "var(--accent-soft)");
+      const tr = Math.abs(T - h0) / rate;
+      g.append("path").attr("d", d3.line()([[x(0), y(h0)], [x(tr), y(T)], [x(Tend), y(T)]]))
+        .style("fill", "none").style("stroke", "var(--fg-dim)").style("stroke-dasharray", "5 4").style("stroke-width", 1.4);
+      // progressive reveal: lines are clipped to [0, tNow]
+      const pid = cid + "p";
+      svg.select("defs").append("clipPath").attr("id", pid).append("rect").attr("class", "reveal")
+        .attr("x", 0).attr("y", 0).attr("height", H).attr("width", x(tNow));
+      const lg = g.append("g").attr("clip-path", `url(#${pid})`);
+      const line = d3.line().x((p) => x(p[0])).y((p) => y(p[1]));
+      S.forEach((s) => {
+        lg.append("path").attr("d", line(s.pts)).style("fill", "none").style("stroke", METHOD[s.m].c)
+          .style("stroke-width", s.m === "ppo" ? 2.2 : 1.8).style("stroke-linejoin", "round");
+      });
+      const heads = svg.append("g");
+      S.forEach((s) => {
+        heads.append("circle").attr("class", "head").attr("data-m", s.m).attr("r", 4.2)
+          .style("fill", METHOD[s.m].c).style("stroke", "var(--bg-raise)").style("stroke-width", 1.5);
+        if (!s.r.survived) {
+          const p = s.pts[s.pts.length - 1];
+          const cx = x(p[0]), cy = Math.max(m.t + 6, Math.min(H - m.b - 6, y(p[1])));
+          heads.append("path").attr("class", "lost").attr("data-t", p[0])
+            .attr("d", `M${cx - 5},${cy - 5}L${cx + 5},${cy + 5}M${cx - 5},${cy + 5}L${cx + 5},${cy - 5}`)
+            .style("stroke", METHOD[s.m].c).style("stroke-width", 2.2);
+        }
+      });
+      host.replaceChildren(svg.node());
+      const place = () => {
+        svg.select(".reveal").attr("width", x(tNow));
+        heads.selectAll("circle.head").each(function () {
+          const s = S.find((q) => q.m === this.dataset.m);
+          const i = Math.min(s.pts.length - 1, Math.max(0, Math.round(tNow / dt)));
+          const p = s.pts[i];
+          const vis = p && tNow <= s.r.t_end + 1e-6 && p[1] >= y.domain()[0] && p[1] <= y.domain()[1];
+          d3.select(this).attr("cx", p ? x(p[0]) : -99).attr("cy", p ? y(p[1]) : -99).style("opacity", vis ? 1 : 0);
+        });
+        heads.selectAll("path.lost").style("opacity", function () { return tNow >= +this.dataset.t ? 1 : 0; });
+      };
+      place();
+      render.place = place;
+      legend.replaceChildren(...ORDER.map((mm) => {
+        const s = S.find((q) => q.m === mm), st = status(s.r);
+        const d = el("div", { style: `--c:${METHOD[mm].c}` });
+        d.innerHTML = `<b>${METHOD[mm].name}</b><span class="tag ${st.cls}">${st.txt}</span>`;
+        return d;
+      }));
+    };
+    responsive(host, render);
+    const fly = () => {
+      cancelAnimationFrame(raf);
+      if (matchMedia("(prefers-reduced-motion: reduce)").matches) { tNow = Tend; render.place && render.place(); return; }
+      const t0 = performance.now(), dur = 7000;
+      const step = (now) => {
+        tNow = Math.min(Tend, ((now - t0) / dur) * Tend);
+        render.place && render.place();
+        if (tNow < Tend) raf = requestAnimationFrame(step);
+      };
+      raf = requestAnimationFrame(step);
+    };
+    const reset = () => { render(); fly(); };
+    seg($("#al-plane"), (v) => { plane = v; reset(); });
+    seg($("#al-case"), (v) => { kase = v; reset(); });
+    seg($("#al-zoom"), (v) => { zoom = v; render(); });
+    $("#al-fly").addEventListener("click", fly);
+    // play once the first time the chart scrolls into view
+    const io = new IntersectionObserver((e) => { if (e[0].isIntersecting) { io.disconnect(); fly(); } }, { threshold: 0.5 });
+    io.observe(host);
+  }
+
+  // ── altitude table ──────────────────────────────────────────────────────────────────────
+  function altitudeTable(rows) {
+    const t = $("#alt-table");
+    const bar = (v, s, c) => `<span class="bar" style="--w:${(v * 100).toFixed(0)}%;--bar:${c}"><i></i><span>${s}</span></span>`;
+    let h = `<thead><tr><th>Method</th><th>n</th><th>Survival</th><th>Acquired</th><th>Settled RMSE (m)</th><th>Settling t<sub>s</sub> (s)</th><th>Overshoot (m)</th></tr></thead><tbody>`;
+    for (const p of ["Airship_V7", "Volantex_Ranger"]) {
+      h += `<tr class="group"><td colspan="7">${PLANE[p]}</td></tr>`;
+      for (const m of ORDER) {
+        const r = rows.find((q) => q.aircraft === p && q.method === METHOD[m].name);
+        const multi = r.n_seeds > 1;
+        const sd = (v, s, d) => (multi ? fmt.pm(v, s, d) : v.toFixed(d));
+        const rm = r.rmse < 0.001 ? fmt.sci(r.rmse) : sd(r.rmse, r.rmse_std, r.rmse >= 10 ? 1 : 3);
+        const ts = r.acquired < 0.05 || r.settling == null ? `<span class="dash">—</span>` : sd(r.settling, r.settling_std, 1);
+        h += `<tr><td class="mname"><span class="dot" style="background:${METHOD[m].c}"></span>${METHOD[m].name}</td>
+          <td>${r.n}</td>
+          <td>${bar(r.survival, sd(r.survival, r.survival_std, 2), METHOD[m].c)}</td>
+          <td>${bar(r.acquired, sd(r.acquired, r.acquired_std, 2), METHOD[m].c)}</td>
+          <td>${rm}</td><td>${ts}</td><td>${sd(r.overshoot, r.overshoot_std, 2)}</td></tr>`;
+      }
+    }
+    t.innerHTML = h + "</tbody>";
+  }
+
+  // ── attitude heatmap ────────────────────────────────────────────────────────────────────
+  function heatmap(rows) {
+    const host = $("#heat");
+    const lo = Math.log(0.15), hi = Math.log(30);
+    for (const p of ["Airship_V7", "Volantex_Ranger"]) {
+      const box = el("div");
+      box.appendChild(el("h4", {}, `${PLANE[p]}<span>bank RMSE [°] · time in band</span>`));
+      const grid = el("div", { class: "hgrid", role: "table", "aria-label": `Bank tracking on the ${PLANE[p]}` });
+      grid.appendChild(el("div"));
+      for (const mn of MANS) {
+        const d = rows.find((r) => r.aircraft === p && r.maneuver === mn);
+        grid.appendChild(el("div", { class: "ch", role: "columnheader" },
+          `${MAN[mn]}<br><span class="sub" style="letter-spacing:0;text-transform:none;font-family:var(--f-mono);font-weight:500;color:var(--fg-faint)">${d.phi_max_deg.toFixed(0)}° · R ${d.turn_radius_m.toFixed(0)} m</span>`));
+      }
+      for (const m of ORDER) {
+        grid.appendChild(el("div", { class: "rh", role: "rowheader" }, `<span class="dot" style="background:${METHOD[m].c};margin:0"></span>${METHOD[m].name}`));
+        for (const mn of MANS) {
+          const col = rows.filter((r) => r.aircraft === p && r.maneuver === mn);
+          const best = Math.min(...col.map((r) => r.phi_rmse_deg));
+          const r = col.find((q) => q.method === METHOD[m].name);
+          const t = Math.max(0, Math.min(1, (Math.log(r.phi_rmse_deg) - lo) / (hi - lo)));
+          const sd = r.phi_rmse_std != null && r.n_runs > 1 ? ` ± ${r.phi_rmse_std.toFixed(1)}` : "";
+          const surv = r.survival < 1 ? ` · surv ${r.survival.toFixed(2)}` : "";
+          const b = el("button", {
+            type: "button", class: "hcell" + (r.phi_rmse_deg === best ? " best" : ""), style: `--t:${(t * 100).toFixed(0)}%`,
+            title: `${METHOD[m].name}, ${PLANE[p]} ${MAN[mn]}: ${r.phi_rmse_deg.toFixed(2)}°${sd} bank RMSE, ${r.time_in_band_pct.toFixed(0)} % in band${surv}. Click to replay.`,
+          }, `<span class="v">${r.phi_rmse_deg.toFixed(1)}<span class="pm" style="font-weight:400;color:var(--fg-dim)">${sd}</span></span><span class="s">${r.time_in_band_pct.toFixed(0)} %${surv}</span>`);
+          b.addEventListener("click", () => {
+            if (FS.replay) FS.replay.select(p, mn, m);
+            document.getElementById("replay").scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+          });
+          grid.appendChild(b);
+        }
+      }
+      box.appendChild(grid);
+      host.appendChild(box);
+    }
+  }
+
+  // ── ground effect ───────────────────────────────────────────────────────────────────────
+  function groundEffect(trim, closed, frames) {
+    const HB = [0.25, 0.5, 1, 2, 3, 6];
+    const svg = d3.select("#ge-svg"), read = $("#ge-read"), slider = $("#ge-hb"), title = $("#ge-title");
+    let plane = "Airship_V7", k = 0;
+    const W = 560, H = 300, water = 252;
+
+    // front views, unit span centred at the wing root, y up
+    const shapes = {
+      airship: [
+        "M-0.5,-0.11 L-0.43,0 L0.43,0 L0.5,-0.11",         // main wing with drooped tip floats
+        "M-0.12,0 L-0.12,0.2 M0.12,0 L0.12,0.2",             // twin fins
+        "M-0.27,0.2 L0.27,0.2",                              // high tailplane
+      ],
+      ranger: [
+        "M-0.5,0.035 L0,0 L0.5,0.035",                       // dihedral wing
+        "M0,0.02 L0,0.17", "M-0.17,0.1 L0.17,0.1",           // fin, tailplane
+      ],
+    };
+    const body = { airship: [0.075, 0.055], ranger: [0.045, 0.045] };
+
+    function draw() {
+      const hb = HB[k];
+      const tr = trim.find((r) => r.aircraft === plane && r.h_over_b === hb);
+      const cl = closed.find((r) => r.aircraft === plane && r.h_over_b === hb);
+      const span = tr.span;
+      const b = Math.min(330, (water - 34) / (hb + 0.32));
+      const cx = W / 2 - 10, cy = water - hb * b;
+      const kind = plane === "Volantex_Ranger" ? "ranger" : "airship";
+      svg.selectAll("*").remove();
+      svg.append("rect").attr("x", 0).attr("y", water).attr("width", W).attr("height", H - water).style("fill", "var(--bg-sunk)");
+      for (let i = 0; i < 7; i++) {
+        svg.append("path").attr("d", `M${20 + i * 80},${water + 14 + (i % 2) * 9} q10,-4 20,0 t20,0`)
+          .style("fill", "none").style("stroke", "var(--line)").style("stroke-width", 1);
+      }
+      svg.append("line").attr("x1", 0).attr("x2", W).attr("y1", water).attr("y2", water).style("stroke", "var(--fg-faint)").style("stroke-width", 1.2);
+      const plane2 = (sgn, faint) => {
+        const g = svg.append("g").attr("transform", `translate(${cx},${water + sgn * (water - cy)}) scale(${b},${-sgn * b})`);
+        shapes[kind].forEach((d) => g.append("path").attr("d", d).attr("vector-effect", "non-scaling-stroke")
+          .style("fill", "none").style("stroke", faint ? "var(--fg-faint)" : "var(--fg)")
+          .style("stroke-width", faint ? 1.4 : 2.6).style("stroke-dasharray", faint ? "4 4" : null)
+          .style("stroke-linecap", "round").style("stroke-linejoin", "round"));
+        g.append("ellipse").attr("cx", 0).attr("cy", 0.01).attr("rx", body[kind][0]).attr("ry", body[kind][1])
+          .attr("vector-effect", "non-scaling-stroke")
+          .style("fill", faint ? "none" : "var(--bg-raise)").style("stroke", faint ? "var(--fg-faint)" : "var(--fg)")
+          .style("stroke-width", faint ? 1.4 : 2.2).style("stroke-dasharray", faint ? "4 4" : null);
+        return g;
+      };
+      if (water + (water - cy) < H + b * 0.3) plane2(1, true);
+      plane2(-1, false);
+      const mirrorY = water + (water - cy);
+      if (mirrorY < H - 8) svg.append("text").attr("x", cx + b * 0.52 + 8).attr("y", Math.min(H - 6, mirrorY + 4))
+        .style("fill", "var(--fg-faint)").style("font", "500 11px var(--f-mono)").text("image wing");
+      // span dimension
+      const ty = cy - b * 0.3 - 16;
+      const dim = (x1, y1, x2, y2) => svg.append("path").attr("d", `M${x1},${y1}L${x2},${y2}`).style("stroke", "var(--accent)").style("stroke-width", 1.2);
+      dim(cx - b / 2, ty, cx + b / 2, ty);
+      dim(cx - b / 2, ty - 5, cx - b / 2, ty + 5); dim(cx + b / 2, ty - 5, cx + b / 2, ty + 5);
+      svg.append("text").attr("x", cx).attr("y", ty - 7).attr("text-anchor", "middle")
+        .style("fill", "var(--accent)").style("font", "500 12px var(--f-mono)").text(`b = ${span.toFixed(2)} m`);
+      // height dimension
+      const hx = cx + b / 2 + 26;
+      dim(hx, cy, hx, water); dim(hx - 5, cy, hx + 5, cy); dim(hx - 5, water, hx + 5, water);
+      svg.append("text").attr("x", hx + 9).attr("y", (cy + water) / 2 + 4)
+        .style("fill", "var(--accent)").style("font", "500 12px var(--f-mono)").text(`h = ${tr.altitude.toFixed(2)} m`);
+      svg.append("text").attr("x", 14).attr("y", 22).style("fill", "var(--fg)").style("font", "600 22px var(--f-mono)").text(`h/b ${hb}`);
+      svg.append("text").attr("x", 14).attr("y", 42).style("fill", "var(--fg-dim)").style("font", "500 11px var(--f-mono)")
+        .text(`trim ${tr.airspeed.toFixed(0)} m/s · ${frames[plane].mass} kg`);
+
+      const held = cl && cl.hold_valid === 1;
+      const rows = [
+        ["Thrust, correction off", `${tr.thrust_ge_off.toFixed(tr.thrust_ge_off < 5 ? 2 : 1)} N`, 100, "var(--fg-faint)"],
+        ["Thrust, correction on", `${tr.thrust_ge_on.toFixed(tr.thrust_ge_on < 5 ? 2 : 1)} N`, (tr.thrust_ge_on / tr.thrust_ge_off) * 100, "var(--accent)"],
+        ["Change at trim", fmt.pct(tr.delta_thrust_pct), Math.abs(tr.delta_thrust_pct) / 30 * 100, "var(--accent)"],
+        ["Change, policy holding the band", held ? fmt.pct(cl.delta_thrust_pct) : "not held", held ? Math.abs(cl.delta_thrust_pct) / 30 * 100 : 0, "var(--c-ppo)"],
+        ["Lifting-line prediction", fmt.pct(tr.theory_pct), Math.abs(tr.theory_pct) / 30 * 100, "var(--fg-dim)"],
+        ["Trim angle of attack", `${tr.alpha_ge_on.toFixed(2)}°`, null, null, `off ${tr.alpha_ge_off.toFixed(2)}°`],
+      ];
+      read.innerHTML = rows.map(([k2, v, w, c, extra]) => `<div class="r"><span>${k2}</span><span class="n${v === "not held" ? " na" : ""}">${v}</span>${w == null ? `<span class="num" style="font-size:.78rem;color:var(--fg-faint)">${extra}</span>` : `<span class="gb" style="--w:${Math.min(100, w).toFixed(1)}%;--c:${c}"></span>`}</div>`).join("");
+      title.textContent = `${PLANE[plane]} · front view, to scale`;
+      chart.cursor && chart.cursor();
+    }
+
+    const chartHost = $("#ge-chart");
+    const chart = () => {
+      const W2 = chartHost.clientWidth, H2 = Math.max(240, Math.min(330, W2 * 0.62));
+      const m = { l: 46, r: 14, t: 12, b: 36 };
+      const x = d3.scaleLog([0.2, 7], [m.l, W2 - m.r]);
+      const y = d3.scaleLinear([-32, 2], [H2 - m.b, m.t]);
+      const s = d3.create("svg").attr("viewBox", `0 0 ${W2} ${H2}`).attr("width", W2).attr("height", H2);
+      s.append("g").attr("class", "grid").attr("transform", `translate(${m.l},0)`).call(d3.axisLeft(y).ticks(6).tickSize(-(W2 - m.l - m.r)).tickFormat(""));
+      s.append("g").attr("class", "axis").attr("transform", `translate(0,${H2 - m.b})`).call(d3.axisBottom(x).tickValues(HB).tickFormat((d) => d));
+      s.append("g").attr("class", "axis").attr("transform", `translate(${m.l},0)`).call(d3.axisLeft(y).ticks(6).tickFormat((d) => `${d}%`));
+      s.append("text").attr("x", W2 - m.r).attr("y", H2 - 4).attr("text-anchor", "end").text("height over span h/b (log)");
+      const line = d3.line().x((d) => x(d[0])).y((d) => y(d[1]));
+      for (const p of ["Airship_V7", "Airship_A0S", "Volantex_Ranger"]) {
+        if (p === plane) continue;
+        const pts = trim.filter((r) => r.aircraft === p).map((r) => [r.h_over_b, r.delta_thrust_pct]);
+        s.append("path").attr("d", line(pts)).style("fill", "none").style("stroke", "var(--line)").style("stroke-width", 1.5);
+        const last = pts[0];
+        s.append("text").attr("x", x(last[0]) + 4).attr("y", y(last[1]) + (p === "Airship_A0S" ? 12 : -4)).attr("class", "note").text(PLANE[p]);
+      }
+      const T = trim.filter((r) => r.aircraft === plane);
+      const C = closed.filter((r) => r.aircraft === plane && r.hold_valid === 1);
+      const series = [
+        [T.map((r) => [r.h_over_b, r.theory_pct]), "var(--fg-dim)", "1.5 4", 2],
+        [C.map((r) => [r.h_over_b, r.delta_thrust_pct]), "var(--c-ppo)", "6 4", 2],
+        [T.map((r) => [r.h_over_b, r.delta_thrust_pct]), "var(--accent)", null, 2.6],
+      ];
+      series.forEach(([pts, c, dash, w]) => {
+        s.append("path").attr("d", line(pts)).style("fill", "none").style("stroke", c).style("stroke-width", w).style("stroke-dasharray", dash).style("stroke-linecap", "round");
+        pts.forEach((pt) => s.append("circle").attr("cx", x(pt[0])).attr("cy", y(pt[1])).attr("r", 2.6).style("fill", c));
+      });
+      const cur = s.append("g");
+      chart.cursor = () => {
+        cur.selectAll("*").remove();
+        const hb = HB[k];
+        cur.append("line").attr("x1", x(hb)).attr("x2", x(hb)).attr("y1", m.t).attr("y2", H2 - m.b).style("stroke", "var(--fg-faint)").style("stroke-dasharray", "2 3");
+        const tr = T.find((r) => r.h_over_b === hb);
+        cur.append("circle").attr("cx", x(hb)).attr("cy", y(tr.delta_thrust_pct)).attr("r", 6).style("fill", "none").style("stroke", "var(--accent)").style("stroke-width", 2);
+        cur.append("text").attr("x", x(hb) + (hb > 2.5 ? -10 : 10)).attr("y", y(tr.delta_thrust_pct) + 18).attr("text-anchor", hb > 2.5 ? "end" : "start")
+          .attr("class", "lbl").style("fill", "var(--accent)").text(fmt.pct(tr.delta_thrust_pct));
+      };
+      chart.cursor();
+      chartHost.replaceChildren(s.node());
+    };
+    responsive(chartHost, chart);
+    slider.addEventListener("input", () => { k = +slider.value; draw(); });
+    seg($("#ge-plane"), (v) => { plane = v; draw(); chart(); });
+    draw();
+  }
+
+  // ── robustness ──────────────────────────────────────────────────────────────────────────
+  function robustness(rows) {
+    const FAM = [["obs_noise", "var(--s-noise)", "noise"], ["sensor_delay", "var(--s-sdelay)", "sensor delay"],
+      ["action_delay", "var(--s-adelay)", "action delay"], ["wind", "var(--s-turb)", "turbulence"]];
+    const SEV = ["nominal", "mild", "medium", "severe"];
+    for (const [p, id] of [["Airship_V7", "#rb-v7"], ["Volantex_Ranger", "#rb-vr"]]) {
+      const host = $(id);
+      const render = () => {
+        const W = host.clientWidth, H = Math.max(220, Math.min(300, W * 0.62));
+        const m = { l: 40, r: 70, t: 14, b: 30 };
+        const x = d3.scalePoint(SEV, [m.l, W - m.r]).padding(0.15);
+        const y = d3.scaleLinear([0, 25], [H - m.b, m.t]);
+        const s = d3.create("svg").attr("viewBox", `0 0 ${W} ${H}`).attr("width", W).attr("height", H);
+        s.append("g").attr("class", "grid").attr("transform", `translate(${m.l},0)`).call(d3.axisLeft(y).ticks(5).tickSize(-(W - m.l - m.r)).tickFormat(""));
+        s.append("g").attr("class", "axis").attr("transform", `translate(0,${H - m.b})`).call(d3.axisBottom(x));
+        s.append("g").attr("class", "axis").attr("transform", `translate(${m.l},0)`).call(d3.axisLeft(y).ticks(5).tickFormat((d) => `${d}°`));
+        s.append("text").attr("x", m.l + 4).attr("y", m.t + 10).text("bank RMSE");
+        const nom = rows.find((r) => r.aircraft === p && r.disturbance === "nominal");
+        const ends = [];
+        FAM.forEach(([f, c, lab]) => {
+          const pts = [["nominal", nom.phi_rmse, 1]];
+          for (const sv of SEV.slice(1)) {
+            const r = rows.find((q) => q.aircraft === p && q.disturbance === f && q.severity === sv);
+            pts.push([sv, r.phi_rmse, r.survival]);
+          }
+          const ok = pts.filter((q) => q[1] != null);
+          s.append("path").attr("d", d3.line().x((d) => x(d[0])).y((d) => y(d[1]))(ok))
+            .style("fill", "none").style("stroke", c).style("stroke-width", 2.2).style("stroke-linejoin", "round");
+          ok.forEach((q) => {
+            s.append("circle").attr("cx", x(q[0])).attr("cy", y(q[1])).attr("r", q[2] < 1 ? 5 : 3.2)
+              .style("fill", q[2] < 1 ? "var(--bg-raise)" : c).style("stroke", c).style("stroke-width", 2)
+              .append("title").text(`${lab}, ${q[0]}: ${q[1].toFixed(1)}°, survival ${q[2].toFixed(2)}`);
+            if (q[2] < 1) s.append("text").attr("x", x(q[0]) + 8).attr("y", y(q[1]) + 4).attr("class", "note").style("fill", c).text(`surv ${q[2].toFixed(2)}`);
+          });
+          const miss = pts.filter((q) => q[1] == null);
+          miss.forEach((q) => {
+            const cx = x(q[0]), cy = m.t + 8;
+            s.append("path").attr("d", `M${cx - 5},${cy - 5}L${cx + 5},${cy + 5}M${cx - 5},${cy + 5}L${cx + 5},${cy - 5}`).style("stroke", c).style("stroke-width", 2.2);
+            s.append("text").attr("x", cx - 9).attr("y", cy + 4).attr("text-anchor", "end").attr("class", "note").style("fill", c).text("all 4 departed");
+          });
+          const last = ok[ok.length - 1];
+          ends.push({ y: y(last[1]), lab, c });
+        });
+        // end labels, nudged apart
+        ends.sort((a, b) => a.y - b.y);
+        for (let i = 1; i < ends.length; i++) if (ends[i].y - ends[i - 1].y < 12) ends[i].y = ends[i - 1].y + 12;
+        ends.forEach((e) => s.append("text").attr("x", W - m.r + 8).attr("y", e.y + 4).attr("class", "note").style("fill", e.c).text(e.lab));
+        host.replaceChildren(s.node());
+      };
+      responsive(host, render);
+    }
+  }
+
+  // ── ranking bump chart ──────────────────────────────────────────────────────────────────
+  function bump(alt, man) {
+    const host = $("#bump");
+    const A = (m, p) => alt.find((r) => r.method === METHOD[m].name && r.aircraft === p);
+    const cells = (m) => man.filter((r) => r.method === METHOD[m].name).map((r) => r.phi_rmse_deg);
+    const median = (a) => { const s = [...a].sort((x, y) => x - y); const n = s.length; return n % 2 ? s[(n - 1) / 2] : (s[n / 2 - 1] + s[n / 2]) / 2; };
+    const P = ["Airship_V7", "Volantex_Ranger"];
+    const crit = [
+      { name: "Altitude", sub: "acquisition rate", short: "acquire", hi: true, v: (m) => d3.mean(P, (p) => A(m, p).acquired), f: (v) => v.toFixed(2) },
+      { name: "Altitude", sub: "settled precision", short: "precision", hi: false, v: (m) => Math.exp(d3.mean(P, (p) => Math.log(A(m, p).rmse))), f: (v) => (v < 0.001 ? fmt.sci(v) : v < 1 ? v.toFixed(3) : v.toFixed(1)) + " m" },
+      { name: "Attitude", sub: "typical bank error", short: "typical", hi: false, v: (m) => median(cells(m)), f: (v) => v.toFixed(2) + "°" },
+      { name: "Attitude", sub: "worst bank error", short: "worst", hi: false, v: (m) => d3.max(cells(m)), f: (v) => v.toFixed(1) + "°" },
+    ];
+    const ranks = crit.map((c) => {
+      const vals = ORDER.map((m) => ({ m, v: c.v(m) }));
+      vals.sort((a, b) => (c.hi ? b.v - a.v : a.v - b.v));
+      return Object.fromEntries(vals.map((q, i) => [q.m, { r: i + 1, v: q.v }]));
+    });
+    const render = () => {
+      const W = host.clientWidth, wide = W > 700;
+      const H = wide ? 360 : 320;
+      const m = { l: wide ? 112 : 50, r: wide ? 70 : 30, t: 58, b: 18 };
+      const x = d3.scalePoint(crit.map((_, i) => i), [m.l, W - m.r]);
+      const y = d3.scaleLinear([1, 5], [m.t + 10, H - m.b - 10]);
+      const s = d3.create("svg").attr("viewBox", `0 0 ${W} ${H}`).attr("width", W).attr("height", H)
+        .attr("role", "img").attr("aria-label", "Rank of each controller on four criteria");
+      crit.forEach((c, i) => {
+        s.append("line").attr("x1", x(i)).attr("x2", x(i)).attr("y1", m.t).attr("y2", H - m.b).style("stroke", "var(--line-soft)");
+        s.append("text").attr("x", x(i)).attr("y", 18).attr("text-anchor", "middle").attr("class", "lbl").style("font-size", wide ? null : "11px").text(c.name);
+        s.append("text").attr("x", x(i)).attr("y", 34).attr("text-anchor", "middle").attr("class", "note").text(wide ? c.sub : c.short);
+      });
+      for (let r = 1; r <= 5; r++) s.append("text").attr("x", 6).attr("y", y(r) + 4).attr("class", "note").text(`#${r}`);
+      ORDER.forEach((mm) => {
+        const pts = crit.map((_, i) => [x(i), y(ranks[i][mm].r)]);
+        s.append("path").attr("d", d3.line().curve(d3.curveMonotoneX)(pts)).style("fill", "none")
+          .style("stroke", METHOD[mm].c).style("stroke-width", 3.2).style("stroke-linecap", "round").style("opacity", 0.9);
+        crit.forEach((c, i) => {
+          const g = s.append("g").attr("transform", `translate(${x(i)},${y(ranks[i][mm].r)})`);
+          g.append("circle").attr("r", 13).style("fill", "var(--bg-raise)").style("stroke", METHOD[mm].c).style("stroke-width", 2.4);
+          g.append("text").attr("text-anchor", "middle").attr("y", 4).style("fill", "var(--fg)").style("font", "600 10px var(--f-mono)").text(METHOD[mm].name === "MPPI" ? "MP" : METHOD[mm].name.slice(0, 2));
+          g.append("title").text(`${METHOD[mm].name} · ${c.name}, ${c.sub}: ${c.f(ranks[i][mm].v)} (rank ${ranks[i][mm].r})`);
+          if (wide && i < crit.length - 1) g.append("text").attr("x", 18).attr("y", -9).attr("class", "note").style("font-size", "10px").text(c.f(ranks[i][mm].v));
+          if (wide && i === crit.length - 1) g.append("text").attr("x", 18).attr("y", 4).attr("class", "note").style("font-size", "10px").text(c.f(ranks[i][mm].v));
+        });
+        if (wide) s.append("text").attr("x", x(0) - 20).attr("y", y(ranks[0][mm].r) + 4).attr("text-anchor", "end").attr("class", "lbl").style("fill", METHOD[mm].c).text(METHOD[mm].name);
+      });
+      host.replaceChildren(s.node());
+    };
+    responsive(host, render);
+    $("#bump-note").textContent = "Acquisition rate: mean over the two airframes of the altitude table. Settled precision: geometric mean of the settled RMSE over the two airframes. Typical and worst bank error: median and maximum of the eight airframe–maneuver means of the attitude table. Hover a node for its value.";
+  }
+
+  // ── throughput ──────────────────────────────────────────────────────────────────────────
+  function throughput(D) {
+    const host = $("#tp-chart");
+    const render = () => {
+      const W = host.clientWidth, H = Math.max(260, Math.min(420, W * 0.5));
+      const m = { l: 56, r: 18, t: 16, b: 38 };
+      const x = d3.scaleLog([0.7, 3.2e6], [m.l, W - m.r]);
+      const y = d3.scaleLog([300, 2e8], [H - m.b, m.t]);
+      const s = d3.create("svg").attr("viewBox", `0 0 ${W} ${H}`).attr("width", W).attr("height", H)
+        .attr("role", "img").attr("aria-label", "Environment steps per second against number of parallel environments, log-log");
+      const xt = [1, 10, 100, 1e3, 1e4, 1e5, 1e6], yt = [1e3, 1e4, 1e5, 1e6, 1e7, 1e8];
+      const sup = (v) => `10${String(Math.round(Math.log10(v))).replace(/\d/g, (d) => "⁰¹²³⁴⁵⁶⁷⁸⁹"[d])}`;
+      s.append("rect").attr("x", x(256)).attr("width", x(16384) - x(256)).attr("y", m.t).attr("height", H - m.b - m.t).style("fill", "var(--accent-faint)");
+      s.append("text").attr("x", (x(256) + x(16384)) / 2).attr("y", m.t + 14).attr("text-anchor", "middle").attr("class", "note").style("fill", "var(--accent)").text("RL training widths");
+      s.append("g").attr("class", "grid").attr("transform", `translate(${m.l},0)`).call(d3.axisLeft(y).tickValues(yt).tickSize(-(W - m.l - m.r)).tickFormat(""));
+      s.append("g").attr("class", "axis").attr("transform", `translate(0,${H - m.b})`).call(d3.axisBottom(x).tickValues(xt).tickFormat(sup));
+      s.append("g").attr("class", "axis").attr("transform", `translate(${m.l},0)`).call(d3.axisLeft(y).tickValues(yt).tickFormat(sup));
+      s.append("text").attr("x", W - m.r).attr("y", H - 4).attr("text-anchor", "end").text("parallel environments");
+      s.append("text").attr("x", m.l + 6).attr("y", m.t + 30).text("env-steps / s");
+      const cpu = D.series.cpu;
+      const ceil = d3.max(cpu, (d) => d[1]);
+      s.append("path").attr("d", `M${x(24)},${y(ceil)}H${x(16384)}`).style("stroke", "var(--fg-faint)").style("stroke-dasharray", "2 4").style("stroke-width", 1.5);
+      s.append("text").attr("x", x(300)).attr("y", y(ceil) + 14).attr("class", "note").text("CPU ceiling, 16 cores saturated");
+      const line = d3.line().x((d) => x(d[0])).y((d) => y(d[1]));
+      [["cpu", "var(--fg-dim)", "CPU"], ["torch", "var(--c-sac)", "PyTorch"], ["warp", "var(--c-ppo)", "Warp"]].forEach(([k, c, lab]) => {
+        const pts = D.series[k];
+        s.append("path").attr("d", line(pts)).style("fill", "none").style("stroke", c).style("stroke-width", 2.6);
+        pts.forEach((d) => s.append("circle").attr("cx", x(d[0])).attr("cy", y(d[1])).attr("r", 3.6).style("fill", c)
+          .append("title").text(`${lab}: ${d3.format(",")(d[1])} env-steps/s at ${d3.format(",")(d[0])} env${d[0] > 1 ? "s" : ""}`));
+      });
+      const np = D.neuralplane;
+      const st = d3.symbol(d3.symbolStar, 170)();
+      s.append("path").attr("d", st).attr("transform", `translate(${x(np.n_envs)},${y(np.steps_per_s)})`).style("fill", "var(--c-mppi)")
+        .append("title").text(`NeuralPlane, published: ≈${d3.format(".2s")(np.steps_per_s)} env-steps/s at 10⁶ envs`);
+      const w16 = D.series.warp.find((d) => d[0] === 16384), pk = d3.greatest(D.series.warp, (d) => d[1]);
+      const lab = (px, py, t, anchor = "end", dy = -10) => s.append("text").attr("x", px).attr("y", py + dy).attr("text-anchor", anchor).attr("class", "lbl").style("fill", "var(--c-ppo)").text(t);
+      lab(x(w16[0]) - 6, y(w16[1]), `${(w16[1] / 1e6).toFixed(1)} M at 16,384`);
+      if (W > 560) lab(x(pk[0]), y(pk[1]), `${(pk[1] / 1e6).toFixed(1)} M peak`, "middle", -12);
+      if (W > 560) s.append("text").attr("x", x(np.n_envs) - 12).attr("y", y(np.steps_per_s) + 4).attr("text-anchor", "end").attr("class", "lbl").style("fill", "var(--c-mppi)").text("13.4× below Warp");
+      host.replaceChildren(s.node());
+    };
+    responsive(host, render);
+  }
+
+  // ── fleet ───────────────────────────────────────────────────────────────────────────────
+  function fleet(F) {
+    const host = $("#fleet");
+    const TRIM = { Airship_V7: 28, Airship_A0S: 18, Volantex_Ranger: 15, Navion: 45, Cirrus_SR22: 94 };
+    const ROLE = {
+      Airship_V7: "Ground-effect prototype · benchmark", Airship_A0S: "Ground-effect prototype",
+      Volantex_Ranger: "Electric RC · benchmark", Navion: "Piston light aircraft", Cirrus_SR22: "Piston light aircraft",
+    };
+    const maxSpan = d3.max(Object.values(F), (f) => f.span);
+    for (const p of ["Volantex_Ranger", "Airship_A0S", "Airship_V7", "Navion", "Cirrus_SR22"]) {
+      const f = F[p];
+      const row = el("div", { class: "ship" });
+      row.appendChild(el("div", { class: "nm" }, `${PLANE[p]}<small>${ROLE[p]}</small>`));
+      const span = el("div", { class: "span" });
+      const frac = (0.82 * f.span) / maxSpan;
+      span.innerHTML = `<svg viewBox="0 0 1000 34" preserveAspectRatio="none" aria-label="Wingspan ${f.span} m">
+        <rect x="0" y="15" width="${(frac * 1000).toFixed(1)}" height="4" rx="2" style="fill:var(--accent)"></rect>
+        <rect x="${(frac * 500 - 6).toFixed(1)}" y="9" width="12" height="16" rx="3" style="fill:var(--fg-dim)"></rect>
+      </svg><span class="num" style="position:absolute;left:calc(${(frac * 100).toFixed(1)}% + 10px);top:7px;font-size:.8rem;color:var(--fg)">${f.span.toFixed(2)} m</span>`;
+      row.appendChild(span);
+      const kv = (v, k, opt) => el("div", { class: "kv" + (opt ? " opt" : "") }, `${v}<small>${k}</small>`);
+      row.appendChild(kv(f.mass >= 100 ? d3.format(",")(f.mass) : f.mass, "mass kg"));
+      row.appendChild(kv(TRIM[p], "ref. m/s"));
+      row.appendChild(kv((f.mass / f.area).toFixed(1), "kg / m²", true));
+      row.appendChild(kv(`${f.power === "piston_engine" ? "piston" : "electric"}${f.motors > 1 ? " ×" + f.motors : ""}`, `τ ${f.tau} s`, true));
+      host.appendChild(row);
+    }
+  }
+
+  // ── sensor demo ─────────────────────────────────────────────────────────────────────────
+  function sensors(M) {
+    const cv = $("#sn-canvas"), ctx = cv.getContext("2d");
+    const tr = M.cells["Airship_V7/figure8"].ppo;
+    const hz = M.hz, T0 = 22, T1 = 42, fs = 100;
+    // Catmull-Rom upsample of the recorded roll to 100 Hz
+    const src = tr.roll;
+    const at = (t) => {
+      const u = t * hz, i = Math.floor(u), f = u - i;
+      const p = (k) => src[Math.max(0, Math.min(src.length - 1, k))];
+      const p0 = p(i - 1), p1 = p(i), p2 = p(i + 1), p3 = p(i + 2);
+      return 0.5 * (2 * p1 + (-p0 + p2) * f + (2 * p0 - 5 * p1 + 4 * p2 - p3) * f * f + (-p0 + 3 * p1 - 3 * p2 + p3) * f * f * f);
+    };
+    // fixed noise sequence so moving one slider does not reshuffle the others
+    let seed = 7;
+    const rnd = () => { seed |= 0; seed = (seed + 0x6d2b79f5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+    const n = (T1 - T0) * fs + 1;
+    const noise = Array.from({ length: n }, () => Math.sqrt(-2 * Math.log(rnd() + 1e-12)) * Math.cos(2 * Math.PI * rnd()));
+    const RATES = [100, 50, 20, 10, 5, 2];
+    const ids = ["noise", "bias", "scale", "quant", "rate", "delay"];
+    const inp = Object.fromEntries(ids.map((k) => [k, $(`#sn-${k}`)]));
+    const out = Object.fromEntries(ids.map((k) => [k, $(`#sn-${k}-o`)]));
+
+    function draw() {
+      const v = Object.fromEntries(ids.map((k) => [k, +inp[k].value]));
+      const rate = RATES[v.rate];
+      out.noise.textContent = `${v.noise.toFixed(1)}°`;
+      out.bias.textContent = `${v.bias > 0 ? "+" : ""}${v.bias.toFixed(1)}°`;
+      out.scale.textContent = `${v.scale > 0 ? "+" : ""}${v.scale} %`;
+      out.quant.textContent = v.quant ? `${v.quant.toFixed(2)}°` : "off";
+      out.rate.textContent = `${rate} Hz`;
+      out.delay.textContent = `${v.delay} ms`;
+      const dpr = Math.min(2, devicePixelRatio || 1);
+      const W = cv.clientWidth, H = cv.clientHeight;
+      cv.width = W * dpr; cv.height = H * dpr;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, W, H);
+      const pad = { l: 38, r: 10, t: 10, b: 22 };
+      const X = (t) => pad.l + ((t - T0) / (T1 - T0)) * (W - pad.l - pad.r);
+      const Y = (d) => pad.t + ((45 - d) / 90) * (H - pad.t - pad.b);
+      ctx.font = `500 10.5px ${css("--f-mono") || "monospace"}`;
+      ctx.fillStyle = css("--fg-faint");
+      ctx.strokeStyle = css("--line");
+      ctx.lineWidth = 1;
+      for (const d of [-30, 0, 30]) {
+        ctx.beginPath(); ctx.moveTo(pad.l, Y(d)); ctx.lineTo(W - pad.r, Y(d)); ctx.stroke();
+        ctx.fillText(`${d}°`, 4, Y(d) + 4);
+      }
+      for (let t = T0; t <= T1; t += 5) ctx.fillText(`${t - T0} s`, X(t) - 8, H - 6);
+      ctx.strokeStyle = css("--fg-faint"); ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      for (let i = 0; i < n; i++) { const t = T0 + i / fs; i ? ctx.lineTo(X(t), Y(at(t))) : ctx.moveTo(X(t), Y(at(t))); }
+      ctx.stroke();
+      // measurement: sample at `rate` with zero-order hold, from the delayed true signal
+      const hold = Math.round(fs / rate);
+      ctx.strokeStyle = css("--accent"); ctx.lineWidth = 1.8;
+      ctx.beginPath();
+      let last = null;
+      for (let i = 0; i < n; i++) {
+        const t = T0 + i / fs;
+        if (i % hold === 0 || last === null) {
+          let m = (1 + v.scale / 100) * at(Math.max(0, t - v.delay / 1000)) + v.bias + v.noise * noise[i];
+          if (v.quant > 0) m = Math.round(m / v.quant) * v.quant;
+          if (last !== null) ctx.lineTo(X(t), Y(last));
+          last = m;
+        }
+        i ? ctx.lineTo(X(t), Y(last)) : ctx.moveTo(X(t), Y(last));
+      }
+      ctx.stroke();
+    }
+    ids.forEach((k) => inp[k].addEventListener("input", draw));
+    responsive(cv, draw);
+    onTheme(draw);
+  }
+})();
+
+</script>
+<script>
+/* FALCON-S project page: 3D replay of recorded maneuver flights.
+   Data: data/maneuvers.json, decimated to 10 Hz from results/traces by tools/build_data.py.
+   Frames: the simulator is north-east-down; the scene is x = east, y = up, z = −north, a proper
+   rotation, so headings and bank directions are preserved. */
+(function () {
+  "use strict";
+  const { ORDER, METHOD, PLANE, MAN, css, $, el, seg, onTheme } = window.FS;
+  const vp = $("#vp");
+  const D2R = Math.PI / 180;
+  const BAND = 8.6;   // tolerance on commanded bank used by the benchmark [deg]
+
+  const state = {
+    plane: "Airship_V7", man: "circle", t: 0, playing: true, speed: 4,
+    visible: Object.fromEntries(ORDER.map((m) => [m, true])), focus: "ppo",
+    color: "method", cam: "orbit",
+  };
+
+  // ── WebGL setup (with a readable fallback) ──────────────────────────────────────────────
+  let renderer;
+  try {
+    if (!window.THREE) throw new Error("three.js did not load");
+    renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+  } catch (e) {
+    vp.appendChild(el("div", { class: "vp-fallback" }, "The 3D replay needs WebGL, which this browser did not provide. The strip chart below still replays every controller's bank angle, and the paper figures further down show the same flights."));
+    renderer = null;
+  }
+
+  const scene = renderer ? new THREE.Scene() : null;
+  const camera = renderer ? new THREE.PerspectiveCamera(38, 16 / 10, 1, 40000) : null;
+  if (renderer) {
+    renderer.setPixelRatio(Math.min(2, devicePixelRatio || 1));
+    vp.prepend(renderer.domElement);
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x556070, 0.95));
+    const sun = new THREE.DirectionalLight(0xffffff, 0.55);
+    sun.position.set(0.6, 1, 0.4);
+    scene.add(sun);
+  }
+
+  // ── helpers ─────────────────────────────────────────────────────────────────────────────
+  const col = (tok) => new THREE.Color(css(tok) || "#888");
+  const COOLWARM = [[-50, "#3b4cc0"], [-25, "#8db0fe"], [0, "#d4d4d4"], [25, "#f4987a"], [50, "#b40426"]];
+  const cw = COOLWARM.map(([v, c]) => [v, renderer ? new THREE.Color(c) : null]);
+  function bankColor(phi, out) {
+    const p = Math.max(-50, Math.min(50, phi));
+    for (let i = 1; i < cw.length; i++) {
+      if (p <= cw[i][0]) {
+        const f = (p - cw[i - 1][0]) / (cw[i][0] - cw[i - 1][0]);
+        return out.copy(cw[i - 1][1]).lerp(cw[i][1], f);
+      }
+    }
+    return out.copy(cw[cw.length - 1][1]);
+  }
+  const niceStep = (span) => [5, 10, 20, 25, 50, 100, 200, 250, 500].find((s) => span / s <= 14) || 1000;
+  const unwrap = (a) => { const o = [a[0]]; for (let i = 1; i < a.length; i++) { let d = a[i] - a[i - 1]; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; o.push(o[i - 1] + d); } return o; };
+  const lerpArr = (a, u) => { const i = Math.floor(u), f = u - i; if (i >= a.length - 1) return a[a.length - 1]; if (i < 0) return a[0]; return a[i] + (a[i + 1] - a[i]) * f; };
+
+  function glyph(kind, color) {
+    const g = new THREE.Group();
+    const mat = new THREE.MeshLambertMaterial({ color });
+    const add = (geo, x, y, z, rz = 0, ry = 0) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.rotation.z = rz; m.rotation.y = ry; g.add(m); return m; };
+    const fus = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 10), mat);
+    fus.scale.set(0.06, 0.06, 0.3); g.add(fus);
+    add(new THREE.BoxGeometry(1.0, 0.014, 0.17), 0, 0, -0.02);
+    if (kind === "airship") {
+      add(new THREE.BoxGeometry(0.17, 0.012, 0.13), -0.56, -0.05, -0.02, 0.6);
+      add(new THREE.BoxGeometry(0.17, 0.012, 0.13), 0.56, -0.05, -0.02, -0.6);
+      add(new THREE.BoxGeometry(0.012, 0.2, 0.12), -0.12, 0.1, 0.32);
+      add(new THREE.BoxGeometry(0.012, 0.2, 0.12), 0.12, 0.1, 0.32);
+      add(new THREE.BoxGeometry(0.56, 0.012, 0.09), 0, 0.2, 0.34);
+    } else {
+      add(new THREE.BoxGeometry(0.012, 0.15, 0.11), 0, 0.075, 0.3);
+      add(new THREE.BoxGeometry(0.36, 0.012, 0.09), 0, 0.02, 0.31);
+    }
+    g.userData.mat = mat;
+    return g;
+  }
+
+  // ── scene content for one cell ──────────────────────────────────────────────────────────
+  let M = null, cell = null, objs = {}, world = null, extent = 100, tMax = 1, glyphSpan = 10;
+  let grid = null, gridStep = 1;
+
+  function buildCell() {
+    cell = M.cells[`${state.plane}/${state.man}`];
+    const hz = M.hz;
+    tMax = Math.max(...ORDER.map((m) => (cell[m].n - 1) / hz));
+    // bounding box over all tracks, in scene coordinates
+    let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+    ORDER.forEach((m) => { const c = cell[m]; for (let i = 0; i < c.n; i++) {
+      const x = c.east[i], z = -c.north[i], y = c.alt[i];
+      if (x < x0) x0 = x; if (x > x1) x1 = x; if (z < z0) z0 = z; if (z > z1) z1 = z; if (y < y0) y0 = y; if (y > y1) y1 = y; } });
+    const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
+    extent = Math.max(x1 - x0, z1 - z0, 40);
+    glyphSpan = Math.max(extent * 0.05, state.plane === "Airship_V7" ? 5 : 1.62);
+    const realSpan = state.plane === "Airship_V7" ? 5.0 : 1.62;
+    $("#vp-scale").textContent = `aircraft drawn ×${Math.round(glyphSpan / realSpan)}`;
+    world = { cx, cz, y0, y1, x0: x0 - cx, x1: x1 - cx, z0: z0 - cz, z1: z1 - cz };
+    if (!renderer) { buildStrip(); updateTable(); return; }
+
+    // clear previous
+    Object.values(objs).forEach((o) => { scene.remove(o.ribbon, o.shadow, o.drop, o.plane); o.ribbon.geometry.dispose(); o.shadow.geometry.dispose(); });
+    if (grid) { scene.remove(grid); grid.geometry.dispose(); }
+    objs = {};
+
+    // ground grid
+    const step = niceStep(extent * 1.3);
+    gridStep = step;
+    const half = Math.ceil((extent * 0.85) / step) * step;
+    const gx = [], gcol = [];
+    const c1 = col("--scene-grid"), c2 = col("--scene-grid-soft");
+    for (let v = -half; v <= half + 1e-6; v += step) {
+      const major = Math.round(v / step) % 5 === 0;
+      const c = major ? c1 : c2;
+      gx.push(v, 0, -half, v, 0, half, -half, 0, v, half, 0, v);
+      for (let k = 0; k < 4; k++) gcol.push(c.r, c.g, c.b);
+    }
+    const gg = new THREE.BufferGeometry();
+    gg.setAttribute("position", new THREE.Float32BufferAttribute(gx, 3));
+    gg.setAttribute("color", new THREE.Float32BufferAttribute(gcol, 3));
+    grid = new THREE.LineSegments(gg, new THREE.LineBasicMaterial({ vertexColors: true }));
+    scene.add(grid);
+    $("#vp-grid").textContent = `grid ${step} m · ground at 0 m`;
+
+    const kind = state.plane === "Volantex_Ranger" ? "ranger" : "airship";
+    const half2 = glyphSpan * 0.42;
+    ORDER.forEach((m) => {
+      const c = cell[m], n = c.n;
+      const yaw = unwrap(c.yaw);
+      const pos = new Float32Array(n * 6), colr = new Float32Array(n * 6), idx = [];
+      const sh = new Float32Array(n * 3);
+      const e = new THREE.Euler(0, 0, 0, "YXZ"), r = new THREE.Vector3();
+      const th = [];
+      for (let i = 0; i < n; i++) {
+        const x = c.east[i] - cx, y = c.alt[i], z = -c.north[i] - cz;
+        const theta = Math.asin(Math.max(-0.5, Math.min(0.5, c.climb[i] / Math.max(1, c.va[i]))));
+        th.push(theta);
+        e.set(theta, -yaw[i], -c.roll[i] * D2R, "YXZ");
+        r.set(half2, 0, 0).applyEuler(e);
+        pos.set([x - r.x, y - r.y, z - r.z, x + r.x, y + r.y, z + r.z], i * 6);
+        sh.set([x, 0.05, z], i * 3);
+        if (i < n - 1) { const a = 2 * i; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
+      }
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+      geo.setAttribute("color", new THREE.BufferAttribute(colr, 3));
+      geo.setIndex(idx);
+      const ribbon = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide, transparent: true, opacity: 0.62, depthWrite: false }));
+      const sgeo = new THREE.BufferGeometry();
+      sgeo.setAttribute("position", new THREE.BufferAttribute(sh, 3));
+      const shadow = new THREE.Line(sgeo, new THREE.LineBasicMaterial({ transparent: true, opacity: 0.22 }));
+      const dgeo = new THREE.BufferGeometry();
+      dgeo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(6), 3));
+      const drop = new THREE.Line(dgeo, new THREE.LineBasicMaterial({ transparent: true, opacity: 0.3 }));
+      const plane = glyph(kind, 0xffffff);
+      plane.scale.setScalar(glyphSpan);
+      scene.add(ribbon, shadow, drop, plane);
+      objs[m] = { ribbon, shadow, drop, plane, yaw, th, n };
+    });
+    paintColors();
+    fitCamera(true);
+    buildStrip();
+    updateTable();
+  }
+
+  function paintColors() {
+    if (!renderer) return;
+    const bg = col("--scene-bg");
+    scene.background = bg;
+    scene.fog = new THREE.Fog(bg, extent * 1.6, extent * 6);
+    if (grid) {
+      // rebuild grid colours from tokens
+      const c1 = col("--scene-grid"), c2 = col("--scene-grid-soft");
+      const ca = grid.geometry.getAttribute("color"), pa = grid.geometry.getAttribute("position");
+      const step = gridStep;
+      for (let i = 0; i < ca.count; i += 4) {
+        const v = pa.getX(i) !== pa.getX(i + 1) ? pa.getZ(i) : pa.getX(i);
+        const c = Math.round(v / step) % 5 === 0 ? c1 : c2;
+        for (let k = 0; k < 4; k++) ca.setXYZ(i + k, c.r, c.g, c.b);
+      }
+      ca.needsUpdate = true;
+    }
+    const tmp = new THREE.Color();
+    ORDER.forEach((m) => {
+      const o = objs[m]; if (!o) return;
+      const mc = col(METHOD[m].tok);
+      o.plane.userData.mat.color.copy(mc);
+      o.shadow.material.color.copy(mc);
+      o.drop.material.color.copy(mc);
+      const ca = o.ribbon.geometry.getAttribute("color"), c = cell[m];
+      for (let i = 0; i < o.n; i++) {
+        const cc = state.color === "bank" ? bankColor(c.roll[i], tmp) : mc;
+        ca.setXYZ(2 * i, cc.r, cc.g, cc.b); ca.setXYZ(2 * i + 1, cc.r, cc.g, cc.b);
+      }
+      ca.needsUpdate = true;
+    });
+    $("#vp-legend").hidden = state.color !== "bank";
+  }
+
+  // ── camera ──────────────────────────────────────────────────────────────────────────────
+  const orbit = { az: 0.75, el: 0.42, dist: 500, target: renderer ? new THREE.Vector3() : null };
+  function fitCamera(reset) {
+    if (!renderer) return;
+    const midY = (world.y0 + world.y1) / 2;
+    orbit.target.set(0, midY * 0.6, 0);
+    if (reset) {
+      orbit.az = state.man === "sturn" ? 1.25 : 0.75;
+      orbit.el = state.man === "sturn" ? 0.5 : 0.42;
+      const r = Math.hypot(world.x1 - world.x0, world.z1 - world.z0, world.y1) / 2;
+      orbit.dist = (r / Math.sin((camera.fov * D2R) / 2)) * (camera.aspect < 1 ? 1.25 : 0.82);
+    }
+  }
+  const chaseCam = renderer ? { pos: new THREE.Vector3(), look: new THREE.Vector3(), init: false } : null;
+  function placeCamera() {
+    if (state.cam === "chase" && objs[state.focus]) {
+      const p = objs[state.focus].plane;
+      const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(p.quaternion);
+      fwd.y = 0; fwd.normalize();
+      const want = p.position.clone().addScaledVector(fwd, -glyphSpan * 5.5).add(new THREE.Vector3(0, glyphSpan * 1.6, 0));
+      const look = p.position.clone().addScaledVector(fwd, glyphSpan * 3);
+      if (!chaseCam.init) { chaseCam.pos.copy(want); chaseCam.look.copy(look); chaseCam.init = true; }
+      chaseCam.pos.lerp(want, 0.08); chaseCam.look.lerp(look, 0.12);
+      camera.position.copy(chaseCam.pos); camera.lookAt(chaseCam.look);
+    } else {
+      chaseCam.init = false;
+      const { az, el: e, dist, target } = orbit;
+      camera.position.set(target.x + dist * Math.cos(e) * Math.sin(az), target.y + dist * Math.sin(e), target.z + dist * Math.cos(e) * Math.cos(az));
+      camera.lookAt(target);
+    }
+  }
+
+  // pointer orbit: horizontal drags on touch, both axes with a mouse; wheel zoom after a click
+  if (renderer) {
+    let drag = null, armed = false;
+    const cvs = renderer.domElement;
+    cvs.addEventListener("pointerdown", (e) => { drag = { x: e.clientX, y: e.clientY, type: e.pointerType }; armed = true; cvs.setPointerCapture(e.pointerId); });
+    cvs.addEventListener("pointermove", (e) => {
+      if (!drag) return;
+      const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+      drag.x = e.clientX; drag.y = e.clientY;
+      if (state.cam === "chase") setCam("orbit");
+      orbit.az -= dx * 0.006;
+      if (drag.type === "mouse") orbit.el = Math.max(0.06, Math.min(1.45, orbit.el + dy * 0.005));
+      needs = true;
+    });
+    const end = () => { drag = null; };
+    cvs.addEventListener("pointerup", end); cvs.addEventListener("pointercancel", end);
+    vp.addEventListener("pointerleave", () => { armed = false; });
+    cvs.addEventListener("wheel", (e) => {
+      if (!armed) return;
+      e.preventDefault();
+      orbit.dist = Math.max(extent * 0.15, Math.min(extent * 8, orbit.dist * Math.exp(e.deltaY * 0.0012)));
+      needs = true;
+    }, { passive: false });
+    // zoom buttons for touch and keyboard
+    const zb = el("div", { style: "position:absolute;right:12px;top:52px;display:grid;gap:6px" });
+    [["+", 0.8, "Zoom in"], ["−", 1.25, "Zoom out"], ["⟲", 0, "Reset view"]].forEach(([t, f, lab]) => {
+      const b = el("button", { type: "button", class: "icon-btn", "aria-label": lab, style: "width:32px;height:32px;font:600 15px/1 var(--f-mono);background:color-mix(in srgb,var(--bg-raise) 80%,transparent)" }, t);
+      b.addEventListener("click", () => { if (f) orbit.dist *= f; else { setCam("orbit"); fitCamera(true); } needs = true; });
+      zb.appendChild(b);
+    });
+    vp.appendChild(zb);
+  }
+
+  // ── per-frame update ────────────────────────────────────────────────────────────────────
+  let needs = true;
+  const tmpE = renderer ? new THREE.Euler(0, 0, 0, "YXZ") : null;
+  function poseAt(m, t) {
+    const c = cell[m], u = t * M.hz, o = objs[m];
+    const alive = u <= c.n - 1;
+    const uu = Math.min(u, c.n - 1);
+    return {
+      alive, u: uu,
+      x: lerpArr(c.east, uu) - world.cx, y: lerpArr(c.alt, uu), z: -lerpArr(c.north, uu) - world.cz,
+      roll: lerpArr(c.roll, uu), cmd: lerpArr(c.phi_cmd, uu),
+      yaw: o ? lerpArr(o.yaw, uu) : 0, th: o ? lerpArr(o.th, uu) : 0,
+    };
+  }
+  function updateScene() {
+    if (!renderer) return;
+    ORDER.forEach((m) => {
+      const o = objs[m], vis = state.visible[m];
+      const p = poseAt(m, state.t);
+      o.plane.visible = o.ribbon.visible = o.shadow.visible = o.drop.visible = vis;
+      if (!vis) return;
+      o.plane.position.set(p.x, p.y, p.z);
+      tmpE.set(p.th, -p.yaw, -p.roll * D2R, "YXZ");
+      o.plane.rotation.copy(tmpE);
+      const k = Math.max(0, Math.floor(p.u));
+      o.ribbon.geometry.setDrawRange(0, k * 6);
+      o.shadow.geometry.setDrawRange(0, k + 1);
+      const dp = o.drop.geometry.getAttribute("position");
+      dp.setXYZ(0, p.x, p.y, p.z); dp.setXYZ(1, p.x, 0.05, p.z); dp.needsUpdate = true;
+      o.plane.userData.mat.opacity = p.alive ? 1 : 0.35;
+      o.plane.userData.mat.transparent = !p.alive;
+    });
+  }
+
+  // side list with live readouts
+  const list = $("#rp-methods");
+  const rows = {};
+  ORDER.forEach((m) => {
+    const r = el("div", { class: "mrow" + (m === state.focus ? " focus" : ""), "data-m": m, title: `${METHOD[m].name}: ${METHOD[m].kind}. Click the name to follow it in chase view.` });
+    r.innerHTML = `<input type="checkbox" checked aria-label="Show ${METHOD[m].name}">
+      <span><span class="nm"><i style="background:${METHOD[m].c}"></i>${METHOD[m].name}</span><span class="sub" data-k="run">—</span></span>
+      <span class="live"><span data-k="phi">—</span><small data-k="err">—</small></span>`;
+    const cb = r.querySelector("input");
+    cb.addEventListener("change", () => { state.visible[m] = cb.checked; r.classList.toggle("off", !cb.checked); buildStripLines(); needs = true; });
+    r.addEventListener("click", (e) => {
+      if (e.target === cb) return;
+      state.focus = m;
+      Object.values(rows).forEach((q) => q.el.classList.toggle("focus", q.el.dataset.m === m));
+      if (!state.visible[m]) { cb.checked = true; state.visible[m] = true; r.classList.remove("off"); buildStripLines(); }
+      needs = true;
+    });
+    list.appendChild(r);
+    rows[m] = { el: r, run: r.querySelector('[data-k="run"]'), phi: r.querySelector('[data-k="phi"]'), err: r.querySelector('[data-k="err"]') };
+  });
+  let lastText = 0;
+  function updateText(force) {
+    const now = performance.now();
+    if (!force && now - lastText < 70) return;
+    lastText = now;
+    let cmd = 0;
+    ORDER.forEach((m) => {
+      const p = poseAt(m, state.t);
+      cmd = p.cmd;
+      if (!p.alive && state.t > 0) {
+        rows[m].phi.textContent = "lost";
+        rows[m].err.textContent = `at ${(cell[m].t_fail ?? (cell[m].n - 1) / M.hz).toFixed(1)} s`;
+      } else {
+        rows[m].phi.textContent = `${p.roll >= 0 ? "+" : "−"}${Math.abs(p.roll).toFixed(1)}°`;
+        const e = p.roll - p.cmd;
+        rows[m].err.textContent = `err ${e >= 0 ? "+" : "−"}${Math.abs(e).toFixed(1)}°`;
+      }
+    });
+    const pc = poseAt("ppo", Math.min(state.t, (cell.ppo.n - 1) / M.hz));
+    $("#vp-cmd").textContent = `commanded bank φ* ${pc.cmd >= 0 ? "+" : "−"}${Math.abs(pc.cmd).toFixed(1)}°`;
+    $("#rp-time").textContent = `${state.t.toFixed(1)} / ${tMax.toFixed(1)} s`;
+    $("#rp-scrub").value = String(Math.round((state.t / tMax) * 1000));
+    if (strip.head) strip.head.attr("x1", strip.x(state.t)).attr("x2", strip.x(state.t));
+  }
+
+  // ── strip chart ─────────────────────────────────────────────────────────────────────────
+  const strip = { svg: d3.select("#rp-strip") };
+  function buildStrip() {
+    const svgN = $("#rp-strip");
+    const W = svgN.clientWidth || 800, H = 190;
+    const m = { l: 40, r: 10, t: 10, b: 24 };
+    const c = cell, hz = M.hz;
+    const ymax = Math.min(70, Math.max(30, Math.ceil((d3.max(c.ppo.phi_cmd.map(Math.abs)) + 14) / 10) * 10));
+    strip.x = d3.scaleLinear([0, tMax], [m.l, W - m.r]);
+    strip.y = d3.scaleLinear([-ymax, ymax], [H - m.b, m.t]);
+    const s = strip.svg.attr("viewBox", `0 0 ${W} ${H}`);
+    s.selectAll("*").remove();
+    s.append("g").attr("class", "grid").attr("transform", `translate(${m.l},0)`).call(d3.axisLeft(strip.y).ticks(5).tickSize(-(W - m.l - m.r)).tickFormat(""))
+      .call((g) => g.selectAll("line").style("stroke", "var(--line-soft)")).call((g) => g.select(".domain").remove());
+    s.append("g").attr("transform", `translate(0,${H - m.b})`).call(d3.axisBottom(strip.x).ticks(W < 500 ? 5 : 10).tickFormat((d) => `${d}s`))
+      .call((g) => { g.selectAll("text").style("fill", "var(--fg-dim)").style("font", "500 10.5px var(--f-mono)"); g.selectAll("line,path").style("stroke", "var(--line)"); });
+    s.append("g").attr("transform", `translate(${m.l},0)`).call(d3.axisLeft(strip.y).ticks(5).tickFormat((d) => `${d}°`))
+      .call((g) => { g.selectAll("text").style("fill", "var(--fg-dim)").style("font", "500 10.5px var(--f-mono)"); g.selectAll("line,path").style("stroke", "var(--line)"); });
+    const cmd = c.ppo.phi_cmd.map((v, i) => [i / hz, v]);
+    s.append("path").attr("d", d3.area().x((d) => strip.x(d[0])).y0((d) => strip.y(d[1] - BAND)).y1((d) => strip.y(d[1] + BAND))(cmd))
+      .style("fill", "var(--accent-soft)");
+    strip.lines = s.append("g");
+    s.append("path").attr("d", d3.line().x((d) => strip.x(d[0])).y((d) => strip.y(d[1]))(cmd))
+      .style("fill", "none").style("stroke", "var(--c-cmd)").style("stroke-width", 1.4).style("stroke-dasharray", "5 4").style("opacity", 0.8);
+    strip.head = s.append("line").attr("y1", m.t).attr("y2", H - m.b).style("stroke", "var(--accent)").style("stroke-width", 1.5);
+    buildStripLines();
+    const d = c.ppo.descriptors;
+    $("#rp-defs").innerHTML = `<span>${PLANE[state.plane]} · ${MAN[state.man]}</span><span>φ<sub>max</sub> <b>${d.phi_max_deg.toFixed(1)}°</b></span><span>turn radius <b>${d.turn_radius_m.toFixed(0)} m</b></span><span>load factor <b>${d.load_factor.toFixed(2)}</b></span><span>duration <b>${tMax.toFixed(1)} s</b></span><span style="color:var(--fg-faint)">bank φ · commanded dashed · ±${BAND}° band shaded</span>`;
+    $("#vp-cell").textContent = `${PLANE[state.plane]} · ${MAN[state.man].toLowerCase()}`;
+    updateText(true);
+  }
+  function buildStripLines() {
+    if (!strip.lines) return;
+    strip.lines.selectAll("*").remove();
+    const hz = M.hz;
+    [...ORDER].reverse().forEach((m) => {
+      if (!state.visible[m]) return;
+      const c = cell[m];
+      const pts = c.roll.map((v, i) => [i / hz, v]);
+      strip.lines.append("path").attr("d", d3.line().x((d) => strip.x(d[0])).y((d) => strip.y(Math.max(strip.y.domain()[0], Math.min(strip.y.domain()[1], d[1]))))(pts))
+        .style("fill", "none").style("stroke", METHOD[m].c).style("stroke-width", m === "ppo" ? 1.9 : 1.4).style("opacity", 0.95);
+      if (!c.survived) {
+        const p = pts[pts.length - 1], X = strip.x(p[0]), Y = strip.y(Math.max(strip.y.domain()[0], Math.min(strip.y.domain()[1], p[1])));
+        strip.lines.append("path").attr("d", `M${X - 4},${Y - 4}L${X + 4},${Y + 4}M${X - 4},${Y + 4}L${X + 4},${Y - 4}`).style("stroke", METHOD[m].c).style("stroke-width", 2);
+      }
+    });
+  }
+  // scrub on the strip
+  (function () {
+    const n = $("#rp-strip");
+    let down = false;
+    const seek = (e) => {
+      const r = n.getBoundingClientRect();
+      const xv = ((e.clientX - r.left) / r.width) * (+n.getAttribute("viewBox").split(" ")[2]);
+      state.t = Math.max(0, Math.min(tMax, strip.x.invert(xv)));
+      needs = true; updateText(true);
+    };
+    n.addEventListener("pointerdown", (e) => { down = true; seek(e); });
+    n.addEventListener("pointermove", (e) => { if (down) seek(e); });
+    addEventListener("pointerup", () => { down = false; });
+  })();
+
+  // ── published numbers for the cell ──────────────────────────────────────────────────────
+  let RES = null;
+  function updateTable() {
+    const t = $("#rp-table");
+    if (!RES || !cell) return;
+    const rowsG = RES.maneuvers.filter((r) => r.aircraft === state.plane && r.maneuver === state.man);
+    let h = `<thead><tr><th>Controller</th><th>Bank RMSE (°)</th><th>Time in band</th><th>Climb-rate RMSE (m/s)</th><th>Airspeed RMSE (m/s)</th><th>Runs</th><th>Replayed run</th></tr></thead><tbody>`;
+    const best = Math.min(...rowsG.map((r) => r.phi_rmse_deg));
+    ORDER.forEach((m) => {
+      const r = rowsG.find((q) => q.method === METHOD[m].name), c = cell[m];
+      const sd = (v, s, d) => (r.n_runs > 1 && s != null ? `${v.toFixed(d)}<span class="pm"> ± ${s.toFixed(d)}</span>` : v.toFixed(d));
+      const surv = r.survival < 1 ? ` <span class="tag bad">surv ${r.survival.toFixed(2)}</span>` : "";
+      h += `<tr><td class="mname"><span class="dot" style="background:${METHOD[m].c}"></span>${METHOD[m].name}</td>
+        <td>${r.phi_rmse_deg === best ? `<span class="tag good">${r.phi_rmse_deg.toFixed(2)}</span>` : sd(r.phi_rmse_deg, r.phi_rmse_std, 2)}${r.phi_rmse_deg === best && r.n_runs > 1 ? `<span class="pm"> ± ${r.phi_rmse_std.toFixed(2)}</span>` : ""}</td>
+        <td>${r.time_in_band_pct.toFixed(0)} %</td>
+        <td>${sd(r.hdot_rmse_ms, r.hdot_rmse_ms_std, 2)}</td>
+        <td>${sd(r.va_rmse_ms, r.va_rmse_ms_std, 2)}</td>
+        <td>${r.n_runs}${surv}</td>
+        <td><span class="pm">${c.run} · </span>${c.survived ? (c.phi_rmse != null ? c.phi_rmse.toFixed(2) + "°" : "—") : `<span class="tag bad">departed</span>`}</td></tr>`;
+      rows[m].run.textContent = c.run;
+    });
+    t.innerHTML = h + "</tbody>";
+  }
+
+  // ── controls ────────────────────────────────────────────────────────────────────────────
+  const planeSeg = seg($("#rp-plane"), (v) => { state.plane = v; state.t = 0; buildCell(); needs = true; });
+  const manSeg = seg($("#rp-man"), (v) => { state.man = v; state.t = 0; buildCell(); needs = true; });
+  seg($("#rp-color"), (v) => { state.color = v; paintColors(); needs = true; });
+  const camSeg = seg($("#rp-cam"), (v) => { state.cam = v; needs = true; });
+  const setCam = (v) => { state.cam = v; camSeg.set(v, true); };
+  seg($("#rp-speed"), (v) => { state.speed = +v; });
+  const playBtn = $("#rp-play"), playIcon = $("#rp-play-icon");
+  const setPlaying = (p) => {
+    state.playing = p;
+    playIcon.setAttribute("d", p ? "M4 2h3v12H4zM9 2h3v12H9z" : "M4 2.5v11l9-5.5z");
+    playBtn.setAttribute("aria-label", p ? "Pause" : "Play");
+  };
+  playBtn.addEventListener("click", () => { if (!state.playing && state.t >= tMax) state.t = 0; setPlaying(!state.playing); });
+  $("#rp-scrub").addEventListener("input", (e) => { state.t = (+e.target.value / 1000) * tMax; needs = true; updateText(true); });
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) setPlaying(false);
+
+  window.FS.replay = {
+    select(plane, man, focus) {
+      planeSeg.set(plane, true); manSeg.set(man, true);
+      state.plane = plane; state.man = man; state.t = 0;
+      if (focus) {
+        state.focus = focus;
+        Object.values(rows).forEach((q) => q.el.classList.toggle("focus", q.el.dataset.m === focus));
+      }
+      if (M) buildCell();
+      setPlaying(true); needs = true;
+    },
+  };
+
+  // ── loop ────────────────────────────────────────────────────────────────────────────────
+  let inView = true, last = performance.now(), hold = 0;
+  new IntersectionObserver((e) => { inView = e[0].isIntersecting; }, { threshold: 0.05 }).observe(vp);
+  function resize() {
+    if (!renderer) return;
+    const w = vp.clientWidth, h = vp.clientHeight;
+    renderer.setSize(w, h, false);
+    camera.aspect = w / h; camera.updateProjectionMatrix();
+    needs = true;
+  }
+  new ResizeObserver(() => { resize(); if (cell) { buildStrip(); } }).observe(vp);
+  function frame(now) {
+    const dt = Math.min(0.1, (now - last) / 1000);
+    last = now;
+    if (cell && state.playing && inView) {
+      if (state.t >= tMax) {
+        hold += dt;
+        if (hold > 1.5) { state.t = 0; hold = 0; }
+      } else {
+        state.t = Math.min(tMax, state.t + dt * state.speed);
+      }
+      needs = true;
+    }
+    if (cell && needs && inView) {
+      updateScene();
+      if (renderer) { placeCamera(); renderer.render(scene, camera); }
+      updateText(false);
+      needs = state.cam === "chase";
+    }
+    requestAnimationFrame(frame);
+  }
+
+  onTheme(() => { if (cell) { paintColors(); needs = true; } });
+
+  Promise.all([window.FS.maneuversP, window.FS.resultsP]).then(([m, res]) => {
+    M = m; RES = res;
+    resize();
+    buildCell();
+    requestAnimationFrame(frame);
+  }).catch((e) => {
+    console.error(e);
+    vp.appendChild(el("div", { class: "vp-fallback" }, "The replay data did not load. Serve the page over HTTP (for example <code>python -m http.server</code> in the page folder) rather than opening the file directly."));
+  });
+})();
+
+</script>
+
+</body></html>
