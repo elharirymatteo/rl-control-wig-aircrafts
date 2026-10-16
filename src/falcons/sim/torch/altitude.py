@@ -367,15 +367,16 @@ class AltitudeEnv:
         self.gust_lin = gust
 
     @torch.no_grad()
-    def step(self, action):
-        action = action.clamp(-1, 1)
+    def physics_step(self, action):
+        """The plant part of `step`: wind, actuators, forces frozen over the step, DP5 rigid-body
+        update. Returns the body force and moment the step integrated (tests/test_plant_parity.py
+        compares exactly this against the Warp plant)."""
         self._update_wind()
         # actuators (cmd: elevator=a0, throttle=a1, ail=rud=0)
         se = self._scale(action[:, 0], self.elev_min, self.elev_max)
         self.elev, self.elev_d = self._act2_rk45(se, self.elev, self.elev_d)
         self.elev = self.elev.clamp(self.elev_min, self.elev_max)
         zero = torch.zeros(self.n, device=self.device)
-        sa = self._scale(zero, *([self.elev_min, self.elev_max]))  # aileron limits ~ use surfaces; ail cmd 0
         self.ail, self.ail_d = self._act2_rk45(self._scale(zero, -15.0, 15.0), self.ail, self.ail_d)
         self.ail = self.ail.clamp(-15.0, 15.0)
         self.rud, self.rud_d = self._act2_rk45(self._scale(zero, -15.0, 15.0), self.rud, self.rud_d)
@@ -385,6 +386,12 @@ class AltitudeEnv:
 
         Fb, Mb, Va, alpha = self._forces()
         self._rk45_rigid(Fb, Mb)
+        return Fb, Mb
+
+    @torch.no_grad()
+    def step(self, action):
+        action = action.clamp(-1, 1)
+        self.physics_step(action)
 
         # reference ramp + integral
         if self.ref_rate > 0:
