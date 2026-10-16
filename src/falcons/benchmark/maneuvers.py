@@ -114,9 +114,11 @@ def fly(plane, maneuver, controller_factory, turbulence=None, turb_W20=None):
     the classical executors (falcons/controllers/{lqr,mppi}/attitude.py) read the plant state of
     that env directly, so they cannot be built before it.
 
-    Survival = completed the whole maneuver inside the flight envelope (Va in [0.55,1.8]*base_vel,
-    finite, position bounded, no env stall/bank termination). Tracking metrics are computed over
-    t >= settle, and only for a surviving run.
+    Survival = completed the whole maneuver without the environment terminating it (ground
+    contact, |alpha| > 1.5 x stall, Va < 0.6 x base_vel, |bank| > 70 deg, NaN state -- the same
+    rules the RL executors were trained under) and inside the harness envelope (Va <= 1.8 x
+    base_vel, position bounded). Every executor is scored by these same rules. Tracking metrics
+    are computed over t >= settle, and only for a surviving run.
 
     turbulence: enable a Dryden gust field ("light"/"moderate"/"severe" seeds the base W20);
     turb_W20 then overrides the wind speed at 20 ft (m/s) so the caller can hit a target gust
@@ -165,7 +167,14 @@ def fly(plane, maneuver, controller_factory, turbulence=None, turb_W20=None):
         tr["phi_cmd"].append(np.degrees(phi_s[t])); tr["climb"].append(climb)
         tr["hdot_cmd"].append(hdot_s[t]); tr["Va"].append(Va); tr["va_cmd"].append(va_s[t])
         tr["pos"].append(p.copy()); tr["yaw"].append(yaw)
-        e.step(act)   # advance the real dynamics
+        _, _, done, info = e.step(act)   # advance the real dynamics
+        if bool(done[0]) and not bool(info["truncated"][0]):
+            # The env terminated the flight and has ALREADY auto-reset the aircraft to its spawn
+            # state; carrying on would score the rest of the maneuver from a fresh start. This was
+            # ignored before, so a departure by alpha or bank went uncounted unless the airspeed
+            # also left the envelope.
+            survived = False
+            break
 
     tr = {k: np.array(v, dtype=float) for k, v in tr.items()}
     trace = tr

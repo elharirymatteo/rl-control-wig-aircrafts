@@ -19,7 +19,7 @@ from pathlib import Path
 import numpy as np
 
 from falcons.aircraft.config import AircraftConfig
-from falcons.envs.configs import TRIM_VA
+from falcons.envs.configs import PLANE_CONFIGS
 from falcons.paths import CKPT_DIR, RESULTS_DIR
 
 TARGETS = [20.0, 40.0, 60.0, 80.0, 100.0]   # commanded altitudes [m]
@@ -176,6 +176,12 @@ def run_classical(plane, algo, mppi_seeds=(0, 1, 2), ckpt_dir=CKPT_DIR):
     the non-deterministic atomic-add reduction and not the sampler; `mppi_seeds=(0, 0, 0)`
     reproduces that mode."""
     gains = AircraftConfig(plane).acquisition_gains_path
+    # The reference every controller tracks: the RL environment's ramp rate (`ref_rate`) and its
+    # airspeed (`base_vel`, the airframe's default_initial_state airspeed). TRAJ_ACQ_RATE used to
+    # be left unset (2.0 m/s default, right only by coincidence for the V7 and the Ranger) and
+    # TRAJ_REF_VA came from TRIM_VA, which differs from base_vel on the A0S and the Navion.
+    base_vel = float(AircraftConfig(plane).load()["default_initial_state"]["linear_vel"][0])
+    ref_rate = float(PLANE_CONFIGS[plane]["ref_rate"])
     sweeps = []
     for draw in (mppi_seeds if algo == "mppi" else (0,)):
         rows = []
@@ -186,7 +192,7 @@ def run_classical(plane, algo, mppi_seeds=(0, 1, 2), ckpt_dir=CKPT_DIR):
                 for k in range(N_CL):
                     h0 = float(T + sgn * rng.uniform(OFF_LO, OFF_HI))
                     env = dict(os.environ, TRAJ_CONST_ALT=f"{T}", TRAJ_ACQ_H0=f"{h0}",
-                               TRAJ_REF_VA=f"{TRIM_VA[plane]}")
+                               TRAJ_REF_VA=f"{base_vel}", TRAJ_ACQ_RATE=f"{ref_rate}")
                     if algo == "mppi":
                         env["MPPI_DRAW"] = f"{draw}"
                     if algo == "lqr" and gains is not None:
@@ -215,7 +221,7 @@ def child(plane, algo, target, h0):
     if algo == "lqr":
         d = LQRAltitude(plane, init_altitude=h0).run(scen)
     else:
-        d = MPPIAltitude(plane, init_altitude=h0,
+        d = MPPIAltitude(plane, init_altitude=h0, max_steps=STEPS,
                          mppi_seed=int(os.environ.get("MPPI_DRAW", 0))).run(scen)
     h = -d["positions"][:, 2]
     m = min(len(h), STEPS)

@@ -15,7 +15,9 @@ CONST_ALT = wp.constant(float(os.environ.get("TRAJ_CONST_ALT", "1.0")))
 ACQ_H0 = wp.constant(float(os.environ.get("TRAJ_ACQ_H0", "1.0")))
 ACQ_RATE = wp.constant(float(os.environ.get("TRAJ_ACQ_RATE", "2.0")))
 # Reference airspeed [m/s]. Every trajectory function historically emitted 30.0, which is only
-# right for the V7; the Ranger trims at 15. Baked like the rest of this module.
+# right for the V7; the Ranger trims at 15. The altitude benchmark sets it to the airframe's
+# default_initial_state airspeed, the same base_vel the RL envs and the LQR use. Baked like the
+# rest of this module.
 REF_VA = wp.constant(float(os.environ.get("TRAJ_REF_VA", "30.0")))
 
 # ==================== INDIVIDUAL TRAJECTORY FUNCTIONS ====================
@@ -214,6 +216,15 @@ def compute_reference(t: wp.float32, trajectory_type: wp.int32) -> wp.vec3f:
         return acquire_ramp_ref(t)
     else:
         return constant_altitude_ref(t)  # default fallback
+
+@wp.func
+def compute_reference_climb_rate(t: wp.float32, dt: wp.float32, trajectory_type: wp.int32) -> wp.float32:
+    """Commanded climb rate [m/s, up positive]: the forward difference of the reference altitude
+    over one step. On the acquisition ramp this is +-ACQ_RATE while ramping and 0 once on target,
+    which is what the vertical-speed cost term tracks."""
+    a = compute_reference(t, trajectory_type)
+    b = compute_reference(t + dt, trajectory_type)
+    return -(b[1] - a[1]) / dt      # component 1 is z (NED): altitude = -z
 
 # ==================== TRAJECTORY TYPE MAPPING ====================
 

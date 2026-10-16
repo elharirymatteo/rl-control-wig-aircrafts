@@ -6,12 +6,9 @@ import warp as wp
 #   MPPI_ALPHA_LIMIT_DEG : incidence limit used by alpha_tracking_cost (historical: 5 deg)
 #   MPPI_SOFT_ALPHA      : 1 = soft ramp over the last 40% of the limit instead of a hard wall,
 #                          which a sampler cannot see past until a rollout is already through it
-#   MPPI_W_VZ            : vertical-speed damping weight. The altitude term is a POSITION penalty
-#                          and says nothing about sink rate, so a slowly divergent phugoid-like
-#                          mode stays invisible to a one-second preview until the position error
-#                          has already grown. 0 reproduces the historical cost.
+# The vertical-speed weight is a kernel argument (`vertical_speed_weight` in the MPPI specs), not
+# a baked constant: see climb_rate_tracking_cost and kernels._evaluate_trajectories.
 ALPHA_LIMIT_DEG = wp.constant(float(os.environ.get("MPPI_ALPHA_LIMIT_DEG", "5.0")))
-W_VZ = wp.constant(float(os.environ.get("MPPI_W_VZ", "0.0")))
 SOFT_ALPHA = wp.constant(int(os.environ.get("MPPI_SOFT_ALPHA", "0")))
 
 @wp.func
@@ -111,14 +108,6 @@ def vel_tracking_cost(position: wp.vec3f,
     return vel_cost
 
 @wp.func
-def sink_rate_cost(lin_vel: wp.vec3f, ori: wp.quatf) -> wp.float32:
-    """Penalize vertical speed in the world frame -- damps the slow altitude divergence that a
-    pure position cost cannot see within a one-second preview."""
-    vw = wp.quat_rotate(ori, lin_vel)
-    return wp.abs(vw[2])
-
-
-@wp.func
 def excessive_altitude_cost(position: wp.vec3f,
                            lin_vel: wp.vec3f,
                            ang_vel: wp.vec3f,
@@ -170,7 +159,12 @@ def bank_tracking_cost(ori: wp.quatf, target_bank: wp.float32) -> wp.float32:
 @wp.func
 def climb_rate_tracking_cost(lin_vel: wp.vec3f, ori: wp.quatf,
                              target_hdot: wp.float32) -> wp.float32:
-    """Cost for tracking a commanded climb rate hdot* [m/s]. climb_rate = -vz_world."""
+    """Cost for tracking a commanded climb rate hdot* [m/s]. climb_rate = -vz_world.
+
+    Used by both tasks: the attitude executor tracks the stream's hdot*, and the altitude planner
+    tracks the reference ramp's rate. The altitude term alone is a POSITION penalty: a climb or
+    sink rate built up toward the target stays invisible to a short preview until the aircraft is
+    already past it, which is how the position-only planner overshot the acquisition target."""
     vw = wp.quat_rotate(ori, lin_vel)
     return wp.abs(-vw[2] - target_hdot)
 
