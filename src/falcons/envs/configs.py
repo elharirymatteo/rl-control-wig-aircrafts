@@ -47,9 +47,12 @@ PLANE_CONFIGS = {
 }
 
 
-def altitude_env_cfg(aircraft, spawn, horizon=2000):
+def altitude_env_cfg(aircraft, spawn, horizon=2000, in_ground_effect=True):
+    """`in_ground_effect` switches the plant's ground-effect correction for the whole batch; it is
+    the one knob the ground-effect training study (falcons.benchmark.ge_training) varies."""
     c = PLANE_CONFIGS[aircraft]
     cfg = {"horizon": horizon, "spawning_distance": spawn, "altitude_sigma": c["sigma"],
+           "in_ground_effect": bool(in_ground_effect),
            "target_mode": "dynamic", "target_lo": 30.0, "target_hi": 90.0,
            "aircraft": aircraft, "ref_rate": c["ref_rate"],
            "reward_weights": [c.get("w_alt", 5.0), 2.0, c["w_pr"], 0.1], "pr_cap": 9.0,

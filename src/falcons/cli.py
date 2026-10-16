@@ -7,7 +7,7 @@ from falcons.paths import CKPT_DIR, RESULTS_DIR
 
 ALGOS, TASKS = ("ppo", "sac", "td3"), ("altitude", "attitude")
 PLANES = ("Airship_V7", "Airship_A0S", "Volantex_Ranger", "Navion", "Cirrus_SR22")
-PROTOCOLS = ("altitude", "maneuvers", "ground-effect", "robustness", "throughput")
+PROTOCOLS = ("altitude", "maneuvers", "ground-effect", "robustness", "throughput", "ge-training")
 ALTITUDE_DRAWS, MANEUVER_DRAWS = 3, 5   # MPPI sampling draws per cell, per protocol
 
 
@@ -73,6 +73,10 @@ def cmd_benchmark(a):
         ground_effect.run_energy(ge, a.checkpoints, a.results)
     elif a.protocol == "robustness":
         robustness.run(planes, a.checkpoints, a.results)
+    elif a.protocol == "ge-training":
+        from falcons.benchmark import ge_training
+        ge_training.run(planes, a.seeds, a.parents or a.checkpoints, a.children, a.results,
+                        a.ge_steps, a.episodes)
     else:
         throughput.run(planes[0], a.checkpoints, a.results)
 
@@ -116,6 +120,15 @@ def main(argv=None):
                    help=f"MPPI sampling draws per cell (default: {ALTITUDE_DRAWS} for altitude, "
                         f"{MANEUVER_DRAWS} for maneuvers)")
     s.add_argument("--mppi-seed", type=int, default=0, help="first MPPI sampling seed")
+    s.add_argument("--seeds", type=int, nargs="*", default=None,
+                   help="ge-training: parent seeds (default 0-4)")
+    s.add_argument("--parents", type=Path, default=None,
+                   help="ge-training: directory of the altitude parents (default --checkpoints)")
+    s.add_argument("--children", type=Path, default=None,
+                   help="ge-training: where the fine-tuned children go (default <parents>/ge_training)")
+    s.add_argument("--ge-steps", type=int, default=20_000_000,
+                   help="ge-training: fine-tuning env steps per child")
+    s.add_argument("--episodes", type=int, default=200, help="ge-training: episodes per eval cell")
     s = sub.add_parser("tables", help="results/*.csv -> results/tables.tex"); _dirs(s)
     s = sub.add_parser("figures", help="render the benchmark figures (all, or the ones named)"); _dirs(s)
     s.add_argument("names", nargs="*")
