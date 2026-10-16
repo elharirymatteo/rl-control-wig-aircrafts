@@ -35,6 +35,10 @@ class CpuEnv:
             save_history=save_history,
         )
         self.horizon = 10000  # Maximum number of steps in an episode 100 seconds
+        # Termination thresholds identical to the Warp envs (envs/altitude.py, envs/attitude.py):
+        # ground contact, |alpha| beyond 1.5x stall, airspeed below 0.6x the trim airspeed.
+        self.base_vel = float(self.airship.IP.get('linear_vel', [28.0, 0.0, 0.0])[0])
+        self.va_min = 0.6 * self.base_vel
         self.steps = 0
         self.reward = 0
         self.save_history = save_history
@@ -138,7 +142,7 @@ class CpuEnv:
         ):
             self.info["termination_reasons"] = "Stalled"
         # Check if plane has reached low airspeed and considered to be in a stall
-        elif hasattr(self.airship, 'Va') and self.airship.Va < 10.0:
+        elif hasattr(self.airship, 'Va') and self.airship.Va < self.va_min:
             self.info["termination_reasons"] = "Stalled"
         # Check if plane has reached the end of the horizon
         elif self.steps >= self.horizon:

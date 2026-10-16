@@ -1,8 +1,9 @@
 """Derive the LQR gain matrices the classical baseline flies: finite-difference linearization of
 the CPU plant about level flight, then the continuous-time Riccati equation.
 
-Ported from the development repository's scripts/derive_lqr_gains.py (commit 02ebe3c), which
-produced the Airship_V7 and Volantex_Ranger `*_K_LQR.csv` bit-for-bit. Two variants per airframe:
+Ported from the development repository's scripts/derive_lqr_gains.py (commit 02ebe3c). Run on
+that commit's plant, the port reproduces the previously shipped Airship_V7 and Volantex_Ranger
+`*_K_LQR.csv` bit-for-bit. Two variants:
 
     hold         <plane>_K_LQR.csv               the attitude executor and constant-altitude hold
     acquisition  <plane>_K_LQR_acquisition.csv   the altitude acquisition-and-hold protocol
@@ -28,8 +29,18 @@ Model:
     constant command so the sensitivity to u is the settled one, not a single 10 ms sample.
 
 Trim point: forward velocity = the airframe's reference airspeed (default_initial_state), level
-attitude, zero rates, the constant-altitude reference position, zero commands. Integral states
-whose k_i is zero are structurally inert and are removed before the Riccati solve (zero gain).
+attitude, zero rates, altitude TRIM_ALTITUDE, zero commands. The development script linearized
+at the reference module's default altitude, 1 m, inside ground effect (h/b ~ 0.14 on the V7);
+both LQR protocols fly far above that, so the trim is now taken at 60 m. Integral states whose
+k_i is zero are structurally inert and are removed before the Riccati solve (zero gain).
+
+Weights. `hold` is the development repository's per-airframe tuning (the weights that produced
+the shipped hold gains). The shipped acquisition gains have no surviving derivation; `acquisition`
+uses the (qvz, qz, raero, rmotor) that best approximate them within this Q/R template at the
+60 m trim (relative Frobenius error 0.34 on the V7, 0.23 on the Ranger, on the plant they were
+designed on) -- an approximation of the original tuning, not a reproduction. The Q/R printed in
+earlier drafts of the paper (Q_z = 400, R = diag(1, 1, 800, 800, 800)) saturates the elevator
+within one to two seconds on every airframe and was never the shipped design.
 
 Q is diagonal, grouped by physical meaning; per-variant scalars (qvz, qz, raero, rmotor) are in
 RECIPES. The x-position weight is exactly zero: the target x is pinned while the aircraft flies
@@ -38,13 +49,12 @@ forward, so x error grows without bound and any weight on it saturates the actua
     PYTHONPATH=src python scripts/derive_lqr_gains.py all                 # write every CSV
     PYTHONPATH=src python scripts/derive_lqr_gains.py Airship_V7 --variant hold --check
                                                                           # compare, write nothing
-Navion and Cirrus_SR22 are not derived: no (Q, R) found in the development repository's
-300-point grid stabilized their open-loop trim (piston motor lag 3 s, 75-94 m/s), and no
-benchmark flies an LQR on them.
+Navion and Cirrus_SR22 carry the development repository's placeholder weights; no benchmark
+flies an LQR on them, and their gains are written only if the linearized closed loop is stable.
 """
 import argparse
+import os
 import sys
-from pathlib import Path
 
 import numpy as np
 import scipy.linalg
@@ -52,7 +62,8 @@ import scipy.linalg
 from falcons.aircraft.config import AircraftConfig
 from falcons.controllers.lqr.control import LQR_Control
 
-PLANES = ["Airship_V7", "Volantex_Ranger"]
+PLANES = ["Airship_V7", "Volantex_Ranger", "Navion", "Cirrus_SR22"]
+TRIM_ALTITUDE = 60.0   # [m] linearization altitude, out of ground effect on every airframe
 RB_DIM = 12            # linear velocity, angular velocity, quaternion vector part, position
 EPS_RB = np.array([1e-2, 1e-2, 1e-2,     # linear velocity [m/s]
                    1e-3, 1e-3, 1e-3,     # angular velocity [rad/s]
@@ -66,13 +77,19 @@ RECIPES = {
     "hold": {
         "Airship_V7":      dict(qvz=0.1, qz=5.0, raero=30000.0, rmotor=50.0),
         "Volantex_Ranger": dict(qvz=1.0, qz=5.0, raero=1000.0, rmotor=100.0),
+        "Navion":          dict(qvz=0.1, qz=100.0, raero=1.0, rmotor=100.0),     # placeholder
+        "Cirrus_SR22":     dict(qvz=0.1, qz=100.0, raero=1.0, rmotor=100.0),     # placeholder
     },
-    "acquisition": {},           # filled in below once identified
+    "acquisition": {
+        "Airship_V7":      dict(qvz=1.0, qz=1.0, raero=900.0, rmotor=1.0),
+        "Volantex_Ranger": dict(qvz=9.0, qz=5.5, raero=1300.0, rmotor=1.0),
+    },
 }
 OUTPUT = {"hold": "{p}_K_LQR.csv", "acquisition": "{p}_K_LQR_acquisition.csv"}
 
 
 def build_env(plane):
+    os.environ["TRAJ_CONST_ALT"] = f"{TRIM_ALTITUDE}"    # the reference module reads it per call
     env = LQR_Control(aircraft_name=plane, targets={"trajectory_type": "constant_altitude"},
                       save_history=False, use_sensor_noise=False, use_estimator=False)
     env.reset()
@@ -162,7 +179,9 @@ def solve(env, A, B, rb0, qvz, qz, raero, rmotor):
     """K and the closed-loop eigenvalues for one (Q, R)."""
     q, r = weights(env, qvz, qz, raero, rmotor)
     int0 = rb0 + RB_DIM
-    dead = [int0 + i for i in range(3) if env.k_i[i] == 0.0]     # inert integral states
+    # zero-weight pure integrators make (A, Q) undetectable and the Riccati solve ill-posed: the
+    # integral states whose k_i is zero, and the x position (untracked, and no force depends on it)
+    dead = [int0 + i for i in range(3) if env.k_i[i] == 0.0] + [rb0 + 9]
     keep = [i for i in range(A.shape[0]) if i not in dead]
     Ar, Br = A[np.ix_(keep, keep)], B[keep, :]
     P = scipy.linalg.solve_continuous_are(Ar, Br, np.diag(q[keep]), np.diag(r))
@@ -194,9 +213,11 @@ def main(argv=None):
                 err = np.linalg.norm(K - Ks) / np.linalg.norm(Ks)
                 worst = max(worst, err)
                 print(f"{p} {v}: rel. Frobenius difference to {out.name} {err:.3e} ({status})")
-            else:
+            elif status == "stable":
                 np.savetxt(out, K, delimiter=",")
                 print(f"{p} {v}: wrote {out} ({status}, max Re eig {eig.real.max():.2e})")
+            else:
+                print(f"{p} {v}: NOT written ({status}, max Re eig {eig.real.max():.2e})")
     return worst
 
 
