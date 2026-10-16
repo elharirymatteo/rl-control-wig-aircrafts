@@ -25,6 +25,8 @@
       "mac": 0.62,
       "aspect_ratio": 7.53,
       "taper_ratio": 0.39,
+      "induced_drag_k": 0.050053,
+      "induced_drag_source": "polar_fit",
       "cg_offset_vector": [
         0.221,
         0,

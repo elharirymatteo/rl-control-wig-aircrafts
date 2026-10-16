@@ -66,6 +66,7 @@ def build(aircraft, ge):
     VP = co["vehicle_params"]
     m, stall, mac = float(VP.m), float(VP.stall_angle), float(VP.WP.mac)
     span, TR, AR = float(VP.WP.span), float(VP.WP.taper_ratio), float(VP.WP.aspect_ratio)
+    k, area = float(VP.WP.induced_drag_k), float(VP.WP.area)
     cg_z = float(VP.WP.cg_offset_vector[2])
     VP.WP = VP.WP.as_warp_struct(); VP.J = VP.J.as_warp_struct(); VP.PP = VP.PP.as_warp_struct()
     VP.sensor_system = None
@@ -75,6 +76,7 @@ def build(aircraft, ge):
                      save_history=False, in_ground_effect=ge)
     model.solver_type = 1
     return dict(model=model, m=m, stall=stall, mac=mac, span=span, TR=TR, AR=AR, cg_z=cg_z,
+                k=k, area=area,
                 elev=[float(v) for v in cl.elevator_limits],
                 thr=[float(v) for v in cl.throttle_limits],
                 va0=float(co["default_initial_state"].linear_vel[0]))
@@ -140,21 +142,35 @@ def airspeed(on, off):
     return None
 
 
-def theory_pct(h, P):
-    """Analytic drag ratio mu_d * mu_l^2 at height `h`, the factor the simulator multiplies the
-    total drag by. Evaluated at the height the SIMULATOR uses, h + cg_z_offset, not at the
-    commanded height: `compute_mu_l/compute_mu_d` offset the CG altitude by the wing's z offset
-    (`falcons/aircraft/params.py:85`), which is -0.293 m on the Airship V7 and within +-0.04 m on
-    every other airframe here. Evaluating the prediction at the commanded h instead compares a
-    V7 measurement taken at an effective h/b of 0.19 against a line drawn at 0.25.
+def induced_factor(r, TR, AR):
+    """mu_d * mu_l^2 at h/b = r: the factor the correction multiplies the INDUCED drag by."""
+    ml = _mu_l(np.array([r]), 1.0, TR, AR)[0]      # _mu_* take (h, b, ...) and use h/b only
+    md = _mu_d(np.array([r]), 1.0, TR, AR)[0]
+    return float(md * ml ** 2)
 
-    Verified equal to the simulator's own applied factor (C_D_ige / C_D) to four decimals on the
-    airframes whose offset is zero, and to `thrust_saving` below, which applies the same offset
-    from the nominal ratio instead of from the height."""
-    r = (h + P["cg_z"]) / P["span"]
-    ml = _mu_l(np.array([r]), 1.0, P["TR"], P["AR"])[0]
-    md = _mu_d(np.array([r]), 1.0, P["TR"], P["AR"])[0]
-    return 100.0 * (md * ml ** 2 - 1.0)
+
+def _rho(h):
+    """ISA troposphere density [kg/m^3], as the plant's get_air_density."""
+    return 1.225 * (1.0 - 2.25577e-5 * h) ** 4.25588
+
+
+def theory_pct(h, P, op, va):
+    """Fixed-angle-of-attack prediction of the thrust change at height `h`: the correction lowers
+    the induced drag k C_L^2 by the factor mu_d mu_l^2 and leaves the parasitic remainder alone, so
+    at the out-of-ground-effect trim point `op` (lift and drag in N, from `trim`)
+
+        dD / D = k C_L^2 (mu_d mu_l^2 - 1) / C_D.
+
+    Level flight makes that the thrust change too. The prediction holds C_L fixed while the
+    aircraft re-trims, which is why the measured saving exceeds it (see `run_trim`). Evaluated at
+    the height the SIMULATOR uses, h + cg_z_offset (`falcons/aircraft/params.py:85`), which is
+    -0.293 m on the Airship V7 and within +-0.04 m on every other airframe."""
+    if not op:
+        return np.nan
+    qS = 0.5 * _rho(h) * va * va * P["area"]
+    cl, cd = op["lift_N"] / qS, op["drag_N"] / qS
+    f = induced_factor((h + P["cg_z"]) / P["span"], P["TR"], P["AR"])
+    return 100.0 * P["k"] * cl * cl * (f - 1.0) / cd
 
 
 def run_trim(planes, results_dir=RESULTS_DIR):
@@ -173,7 +189,7 @@ def run_trim(planes, results_dir=RESULTS_DIR):
         for r in RATIOS:
             h = r * off["span"]
             t_on, t_off = trim(on, h, va), trim(off, h, va)
-            th = theory_pct(h, off)
+            th = theory_pct(h, off, t_off, va)
             # Drag with ground effect applied but the trim FROZEN at its out-of-ground-effect
             # value. The gap between this and the re-trimmed drag is the part of the saving that
             # comes from the aircraft re-trimming (lower alpha) rather than from the correction
@@ -226,21 +242,16 @@ def geometry(aircraft):
             float(w.cg_offset_vector[2]))
 
 
-def thrust_saving(r, TR, AR, cg_z=0.0, span=1.0):
-    """Analytic thrust ratio T_ige/T_oge = mu_D * mu_L^2 at h/b = r, from the same lifting-line
-    correction the simulator applies (`_mu_l`/`_mu_d` above). Gives every airframe a theory
-    line to compare the measurement against, including the ones whose policy cannot hold the band.
-
-    Evaluated at the height the SIMULATOR uses, h + cg_z_offset, not at the commanded height:
-    `compute_mu_l/compute_mu_d` offset the CG altitude by the wing z offset
-    (`falcons/sim/warp/aerodynamics.py:10`, set in `falcons/aircraft/params.py:85`). That offset is
-    -0.293 m on the Airship V7 and within +-0.04 m on every other airframe, so leaving it out drew
-    the V7 theory line a third of a band away from where its measurement was taken.
-    """
-    r = r + cg_z / span
-    ml = _mu_l(np.array([r]), 1.0, TR, AR)[0]      # _mu_* take (h, b, ...) and use h/b only
-    md = _mu_d(np.array([r]), 1.0, TR, AR)[0]
-    return 100.0 * (md * ml ** 2 - 1.0)
+def theory_line(aircraft):
+    """theory_pct for every band of `aircraft`, at the airspeed `run_trim` uses: the same
+    prediction the trim table reports, so the closed-loop table carries an identical theory
+    column, including for airframes whose policy cannot hold a band."""
+    on, off = build(aircraft, True), build(aircraft, False)
+    va = airspeed(on, off)
+    if va is None:
+        return {r: np.nan for r in RATIOS}
+    return {r: theory_pct(r * off["span"], off, trim(off, r * off["span"], va), va)
+            for r in RATIOS}
 
 
 def cell(aircraft, target, ge, ckpt_dir=CKPT_DIR):
@@ -321,6 +332,7 @@ def run_energy(planes, ckpt_dir=CKPT_DIR, results_dir=RESULTS_DIR):
     rows = []
     for ac in planes:
         b, TR, AR, cg_z = geometry(ac)
+        theory = theory_line(ac)
         for r in RATIOS:
             h = r * b
             if h < MIN_ALT:
@@ -329,7 +341,7 @@ def run_energy(planes, ckpt_dir=CKPT_DIR, results_dir=RESULTS_DIR):
             s_off, rmse_off, e_off, t_off = cell(ac, h, False, ckpt_dir)
             d = (100.0 * (e_on - e_off) / e_off) if e_off and np.isfinite(e_off) else np.nan
             dT = (100.0 * (t_on - t_off) / t_off) if t_off and np.isfinite(t_off) else np.nan
-            th = thrust_saving(r, TR, AR, cg_z, b)
+            th = theory[r]
             # the paired energy comparison only means something if BOTH arms are actually holding
             # the commanded altitude; a policy that is gliding away has no trim throttle to report
             ok = int(min(s_on, s_off) > 0.5

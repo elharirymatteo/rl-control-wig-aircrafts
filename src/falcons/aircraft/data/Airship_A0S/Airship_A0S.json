@@ -23,8 +23,10 @@
       "span": 2.76,
       "area": 1.0,
       "mac": 0.36,
-      "aspect_ratio": 7.53,
+      "aspect_ratio": 7.618,
       "taper_ratio": 0.39,
+      "induced_drag_k": 0.050904,
+      "induced_drag_source": "oswald_e0.82",
       "cg_offset_vector": [
         -0.09,
         0.0,

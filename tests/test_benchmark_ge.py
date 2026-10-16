@@ -5,22 +5,19 @@ import pytest
 from falcons.aircraft.config import PLANES
 from falcons.benchmark import TOLERANCE
 from falcons.benchmark.diff import compare_csv
-from falcons.benchmark.ground_effect import RATIOS, geometry, run_energy, run_trim, theory_pct
+from falcons.benchmark.ground_effect import RATIOS, geometry, induced_factor, run_energy, run_trim
 
 GOLD = Path(__file__).parent / "golden"
 
 
-def test_theory_is_lifting_line_shape():
-    """theory_pct is a thrust CHANGE, so the lifting-line shape is a large NEGATIVE saving deep in
-    ground effect rising monotonically to zero out of it -- not a positive quantity decaying to
-    zero. `geometry` returns the tuple (span, TR, AR, cg_z); `theory_pct` takes metres plus the
-    dict `build` carries, so the keys are supplied here."""
+def test_induced_factor_is_lifting_line_shape():
+    """mu_d mu_l^2 multiplies the induced drag: well below one deep in ground effect, rising
+    monotonically to one out of it. `geometry` returns (span, TR, AR, cg_z)."""
     span, TR, AR, cg_z = geometry("Airship_V7")
-    P = dict(span=span, TR=TR, AR=AR, cg_z=cg_z)
-    pct = [theory_pct(r * span, P) for r in RATIOS]
-    assert pct[0] < -10.0                                  # h/b = 0.25: a large saving
-    assert all(a < b for a, b in zip(pct, pct[1:]))         # monotone toward zero with h/b
-    assert abs(pct[-1]) < 0.01                             # h/b = 6: out of ground effect
+    f = [induced_factor(r + cg_z / span, TR, AR) for r in RATIOS]
+    assert f[0] < 0.9                                      # h/b = 0.25: a large induced saving
+    assert all(a < b for a, b in zip(f, f[1:]))             # monotone toward one with h/b
+    assert abs(f[-1] - 1.0) < 1e-4                         # h/b = 6: out of ground effect
 
 
 @pytest.mark.cuda

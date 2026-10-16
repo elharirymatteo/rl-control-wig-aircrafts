@@ -116,6 +116,7 @@ class AltitudeEnv:
         VP = raw["vehicle_params"]; wing = VP["wing"]
         self.S = float(wing["area"]); self.b = float(wing["span"]); self.c = float(wing["mac"])
         self.taper = float(wing["taper_ratio"]); self.AR = float(wing["aspect_ratio"])
+        self.k_ind = float(wing["induced_drag_k"])
         self.cg_z = float(wing["cg_offset_vector"][2])
         self.mass = float(VP["mass"])
         self.J = torch.tensor(VP["inertia_matrix"], dtype=torch.float32, device=dev)
@@ -220,7 +221,8 @@ class AltitudeEnv:
                 torch.exp(-4.74 * h.clamp_min(1e-6)**0.814)
             t2 = h*h * torch.exp(-3.88 * h.clamp_min(1e-6)**0.758)
             mu_d = t1 - t2
-            D = D * mu_d * mu_l**2; L = L * mu_l
+            # induced drag k C_L^2 only (falcons/aircraft/polar.py); parasitic drag is unchanged
+            D = Q * self.S * (CD + self.k_ind * CL * CL * (mu_d * mu_l**2 - 1.0)); L = L * mu_l
         Fw = torch.stack([-D, Y, -L], dim=-1)
         q_aero = quat_rpy(torch.zeros_like(alpha), alpha, -beta)   # -beta: see the CPU plant
         Fb_aero = quat_rotate_inv(q_aero, Fw)

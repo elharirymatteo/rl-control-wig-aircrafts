@@ -17,6 +17,7 @@ class WingParametersStruct:
     cg_offset_vector: wp.vec3f
     aspect_ratio: wp.float32
     taper_ratio: wp.float32
+    induced_drag_k: wp.float32       # C_Di = k C_L^2, the part of C_D ground effect scales
 
 @wp.struct
 class AerodynamicsParametersStruct:
@@ -59,6 +60,7 @@ class WingParameters:
     mac: float = 0.620
     aspect_ratio: float = 7.53
     taper_ratio: float = 0.39
+    induced_drag_k: float = 0.0           # from falcons.aircraft.polar; 0 disables the GE drag term
     cg_offset_vector: tuple = (0.221, 0, -0.293)
     
     @classmethod
@@ -75,6 +77,7 @@ class WingParameters:
             mac=wing.get('mac', 0.620),
             aspect_ratio=wing.get('aspect_ratio', 7.53),
             taper_ratio=wing.get('taper_ratio', 0.39),
+            induced_drag_k=wing['induced_drag_k'],
             cg_offset_vector=tuple(cg_offset)
         )
 
@@ -86,6 +89,7 @@ class WingParameters:
         s.cg_offset_vector = wp.vec3f(*self.cg_offset_vector)  
         s.aspect_ratio = self.aspect_ratio        
         s.taper_ratio = self.taper_ratio          
+        s.induced_drag_k = self.induced_drag_k
         return s
     
 

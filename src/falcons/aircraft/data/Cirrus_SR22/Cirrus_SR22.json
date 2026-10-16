@@ -11,8 +11,10 @@
       "span": 11.69,
       "area": 13.55,
       "mac": 0.958,
-      "aspect_ratio": 7.53,
+      "aspect_ratio": 10.085,
       "taper_ratio": 0.54,
+      "induced_drag_k": 0.044304,
+      "induced_drag_source": "polar_fit",
       "cg_offset_vector": [0.701, 0, 0.035]
     },
     "actuator_system": {

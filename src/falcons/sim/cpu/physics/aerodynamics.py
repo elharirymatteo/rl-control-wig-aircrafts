@@ -176,7 +176,8 @@ class PolynomialAerodynamics(AerodynamicsBase):
         # Apply ground effect to lift and drag
         mu_l, mu_d = self.get_ground_effect_factors(state)
         CL = CL_oge * mu_l
-        CD = CD_oge * mu_d * mu_l**2
+        # induced drag k C_L^2 only (falcons/aircraft/polar.py); parasitic drag is unchanged
+        CD = CD_oge + self.VP['wing']['induced_drag_k'] * CL_oge**2 * (mu_d * mu_l**2 - 1.0)
         
         return {
             'CD': CD,

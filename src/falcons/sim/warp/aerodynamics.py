@@ -47,10 +47,12 @@ def compute_lift_and_drag_forces(Q: wp.float32,
     if in_ground_effect:
         mu_d = compute_mu_d(WP.taper_ratio, WP.aspect_ratio, WP.span, -position[2], WP.cg_z_offset)
         mu_l = compute_mu_l(WP.taper_ratio, WP.aspect_ratio, WP.span, -position[2], WP.cg_z_offset)
-        D_tot *= mu_d*wp.pow(mu_l, 2.0)
-        L_tot *= mu_l
-        C_D_ige *= mu_d*wp.pow(mu_l, 2.0)
-        C_L_ige *= mu_l
+        # the correction scales the INDUCED drag k C_L^2 only (Phillips & Hunsaker 2013); the
+        # parasitic remainder C_D - k C_L^2 is unchanged (falcons/aircraft/polar.py)
+        C_D_ige = C_D + WP.induced_drag_k * C_L * C_L * (mu_d * mu_l * mu_l - 1.0)
+        C_L_ige = C_L * mu_l
+        D_tot = Q * WP.area * C_D_ige
+        L_tot = Q * WP.area * C_L_ige
 
     return D_tot, Y_tot, L_tot, C_D_ige, C_L_ige
 

@@ -19,6 +19,7 @@ REQUIRED = [
     "vehicle_params.wing.mac",
     "vehicle_params.wing.aspect_ratio",
     "vehicle_params.wing.taper_ratio",
+    "vehicle_params.wing.induced_drag_k",
     "vehicle_params.wing.cg_offset_vector",
     "default_initial_state.position",
     "default_initial_state.linear_vel",
