@@ -4,8 +4,14 @@ values grounded in small-UAV hardware and low-altitude turbulence physics. Same 
 and envelope guard as the clean comparison (benchmark.maneuvers.fly); metrics always come from the
 TRUE state, never the disturbed obs.
 
-One executor, PPO seed 0: a disturbance corrupts what the policy sees or commands and never what
-is scored, so a cell compares CONDITIONS rather than methods.
+One executor, PPO, over every attitude seed checkpoint: a disturbance corrupts what the policy
+sees or commands and never what is scored, so a cell compares CONDITIONS rather than methods.
+
+The stochastic families (sensor noise, Dryden wind) are flown N_REAL times per (seed, maneuver,
+severity), as N_REAL parallel envs with independent noise/gust streams (maneuvers.fly_batch); the
+nominal cell and the two delays are deterministic and flown once. A cell pools every run of every
+seed: survival as k/n with an interval, the errors as an IQM with a hierarchical bootstrap
+interval over seeds (falcons/benchmark/stats.py). robustness_runs.csv keeps every run.
 
 Full derivation and citations: docs/disturbance_model.md.
 Run: run(planes) -> <results_dir>/robustness.csv
@@ -18,11 +24,13 @@ from pathlib import Path
 import numpy as np
 import torch
 
-from falcons.benchmark.maneuvers import fly, make_env
+from falcons.benchmark.maneuvers import fly_batch, make_env
 from falcons.benchmark.streams import DT, MANEUVERS
 from falcons.paths import CKPT_DIR, RESULTS_DIR
 
 SEVERITIES = ["mild", "medium", "severe"]
+N_REAL = 100                    # realizations per (seed, maneuver, severity) of a stochastic family
+STOCHASTIC = ("obs_noise", "wind")
 
 # --- grounded severity grids -------------------------------------------------
 # actuator/command transport lag on top of the modeled servo dynamics: FC compute + link + servo
@@ -109,41 +117,45 @@ class ObsNoise:
         return self.fn(obs + n * self.sigma)
 
 
-def noise_seed(aircraft, sev):
-    """Stable 32-bit seed for one sensor-noise cell. crc32 rather than hash(): Python salts str
-    hashes per process, which would make the draw a property of the process again."""
-    return zlib.crc32(f"{aircraft}/obs_noise/{sev}".encode())
+def noise_seed(aircraft, sev, family="obs_noise", policy_seed=0, maneuver=""):
+    """Stable 31-bit seed for one stochastic cell. crc32 rather than hash(): Python salts str
+    hashes per process, which would make the draw a property of the process again. The defaults
+    give the archive's per-(aircraft, severity) sensor-noise seed."""
+    key = f"{aircraft}/{family}/{sev}" + (f"/s{policy_seed}/{maneuver}" if maneuver else "")
+    return zlib.crc32(key.encode()) & 0x7FFFFFFF
 
 
 PI4 = np.pi / 4.0
 
 
-def calibrate_turb(aircraft):
+def calibrate_turb(aircraft, n=32, steps=700, seed=0):
     """Realized sigma_u is linear in W20 (Dryden filter). Measure the constant k = sigma_u/W20
-    once per airframe so we can set W20 = Iu*Va / k to hit a target intensity."""
-    import warp as wp
-    e = make_env(aircraft, 700, turbulence="light")
+    once per airframe so we can set W20 = Iu*Va / k to hit a target intensity. Averaged over n
+    seeded gust streams, so the calibration is reproducible and not one realization's luck."""
+    e = make_env(aircraft, steps, turbulence="light", n=n)
     e.reset()
+    tm = e.model.wind_model.turbulence_model
+    tm.seed(seed)
     W20 = 20.0
     e.set_turb_W20(W20)
     us = []
-    a = torch.zeros(1, 4, device="cuda")
-    for t in range(700):
+    a = torch.zeros(n, 4, device="cuda")
+    for t in range(steps):
         e.step(a)
-        lin, _ = e.model.wind_model.turbulence_model.get_gusts_numpy()
-        us.append(lin[0, 0])
-    sig_u = float(np.std(us[150:]))
+        lin, _ = tm.get_gusts_numpy()
+        us.append(lin[:, 0].copy())
+    sig_u = float(np.mean(np.std(np.array(us)[150:], axis=0)))
     return sig_u / W20, float(e.base_vel)
 
 
 METHOD = "PPO"      # the one executor; the name the table prints
 
 
-def controller(plane, ckpt_dir=CKPT_DIR):
-    """The study's one executor: the PPO attitude policy at seed 0. A second executor is not an
+def controller(plane, ckpt_dir=CKPT_DIR, seed=0):
+    """The study's one executor: the PPO attitude policy at `seed`. A second executor is not an
     option here either -- the shipped checkpoint set carries no SAC+CAPS weights."""
     from falcons.controllers.policies import load_policy
-    return load_policy("ppo", "attitude", plane, 0, ckpt_dir=ckpt_dir).act
+    return load_policy("ppo", "attitude", plane, seed, ckpt_dir=ckpt_dir).act
 
 
 def _hand_over(ctrl):
@@ -154,11 +166,13 @@ def _hand_over(ctrl):
     return lambda env, phi_s, hdot_s, va_s, draw=0: ctrl
 
 
-def eval_cell(aircraft, method, fn, dist, sev, turb_k=None, va=None, va_scale=None, vz_scale=None):
-    """One (disturbance, severity) cell: mean over maneuvers of survival + tracking RMSE."""
-    survs, phis, hds, vas = [], [], [], []
-    for mv in MANEUVERS:
-        kw = {}
+def eval_cell(aircraft, fn, dist, sev, seed=0, n_real=N_REAL, maneuvers=MANEUVERS,
+              turb_k=None, va=None, va_scale=None, vz_scale=None):
+    """Every run of one (policy seed, disturbance, severity): one per maneuver for a
+    deterministic family, n_real per maneuver for a stochastic one. Returns run records."""
+    out = []
+    for mv in maneuvers:
+        kw, n = {}, (n_real if dist in STOCHASTIC else 1)
         if dist == "nominal":
             ctrl = fn
         elif dist == "action_delay":
@@ -167,55 +181,89 @@ def eval_cell(aircraft, method, fn, dist, sev, turb_k=None, va=None, va_scale=No
             ctrl = SensorDelay(fn, steps_from_ms(SENSOR_DELAY_MS[sev]))
         elif dist == "obs_noise":
             ctrl = ObsNoise(fn, obs_noise_sigma(sev, va_scale, vz_scale),
-                            noise_seed(aircraft, sev))
+                            noise_seed(aircraft, sev, "obs_noise", seed, mv))
         elif dist == "wind":
             ctrl = fn
-            kw = dict(turbulence="light", turb_W20=WIND_IU[sev] * va / turb_k)
-        r = fly(aircraft, mv, _hand_over(ctrl), **kw)
-        survs.append(r["survival"])
-        if r["phi_rmse"] is not None:
-            phis.append(r["phi_rmse"]); hds.append(r["hdot_rmse"]); vas.append(r["va_rmse"])
-    agg = lambda xs: float(np.mean(xs)) if xs else None
-    return dict(aircraft=aircraft, method=method, disturbance=dist, severity=sev,
-                survival=float(np.mean(survs)), n_survive=int(sum(survs)), n=len(MANEUVERS),
-                phi_rmse=agg(phis), hdot_rmse=agg(hds), va_rmse=agg(vas))
+            kw = dict(turbulence="light", turb_W20=WIND_IU[sev] * va / turb_k,
+                      turb_seed=noise_seed(aircraft, sev, "wind", seed, mv))
+        for k, r in enumerate(fly_batch(aircraft, mv, _hand_over(ctrl), n, **kw)):
+            out.append(dict(aircraft=aircraft, method=METHOD, seed=seed, disturbance=dist,
+                            severity=sev, maneuver=mv, realization=k,
+                            survived=int(r["survival"] == 1.0), phi_rmse=r["phi_rmse"],
+                            hdot_rmse=r["hdot_rmse"], va_rmse=r["va_rmse"]))
+    return out
 
 
-def run(planes, ckpt_dir=CKPT_DIR, results_dir=RESULTS_DIR):
-    """One row per (aircraft, disturbance, severity) for the one executor: the nominal cell, then
-    the four families at three severities each, every cell a mean over the four maneuvers."""
+def summarize(runs):
+    """One table row from the runs of a cell, pooled over seeds, maneuvers and realizations."""
+    from falcons.benchmark.stats import rate, summary
+    r0 = runs[0]
+    g = np.array([r["seed"] for r in runs])
+    surv = np.array([r["survived"] for r in runs], dtype=bool)
+    s = rate(surv, g)
+    row = dict(aircraft=r0["aircraft"], method=r0["method"], disturbance=r0["disturbance"],
+               severity=r0["severity"], n_seeds=len(set(g.tolist())),
+               n_real=max(r["realization"] for r in runs) + 1, n=s["n"], n_survive=s["k"],
+               n_dropped=s["n"] - s["k"], survival=s["rate"], survival_lo=s["lo"],
+               survival_hi=s["hi"])
+    for k in ("phi_rmse", "hdot_rmse", "va_rmse"):
+        x = summary([r[k] for r in runs if r["survived"]], g[surv])
+        row.update({k: x["iqm"], f"{k}_lo": x["lo"], f"{k}_hi": x["hi"]})
+    return row
+
+
+def run(planes, ckpt_dir=CKPT_DIR, results_dir=RESULTS_DIR, n_real=N_REAL, seeds=None,
+        maneuvers=MANEUVERS, families=("action_delay", "sensor_delay", "obs_noise", "wind")):
+    """One row per (aircraft, disturbance, severity): the nominal cell, then the families at three
+    severities each. `n_real`, `seeds` (default: every PPO attitude checkpoint), `maneuvers` and
+    `families` are the knobs a fast test turns down."""
     import warp as wp
+    from falcons.controllers.policies import seeds as ckpt_seeds
     wp.init()
     os.makedirs(results_dir, exist_ok=True)
-    rows = []
+    rows, runs = [], []
     for ac in planes:
         turb_k, va = calibrate_turb(ac)
         va_scale = vz_scale = max(0.5 * va, 5.0)
-        print(f"\n=== {ac}  (Va={va:.1f}, turb k=sigma_u/W20={turb_k:.4f}) ===", flush=True)
-        fn = controller(ac, ckpt_dir)
-        base = eval_cell(ac, METHOD, fn, "nominal", "-")
-        rows.append(base)
-        print(f"  {METHOD:9s} nominal            surv {base['survival']:.2f}  "
-              f"phi {base['phi_rmse']}", flush=True)
-        for dist in ["action_delay", "sensor_delay", "obs_noise", "wind"]:
-            for sev in SEVERITIES:
-                c = eval_cell(ac, METHOD, fn, dist, sev, turb_k=turb_k, va=va,
-                              va_scale=va_scale, vz_scale=vz_scale)
-                rows.append(c)
-                pr = f"{c['phi_rmse']:.1f}" if c['phi_rmse'] is not None else "crash"
-                print(f"  {METHOD:9s} {dist:13s} {sev:7s} surv {c['survival']:.2f}  "
-                      f"phi {pr}", flush=True)
-    return _write_table(rows, Path(results_dir) / "robustness.csv")
+        ss = list(seeds) if seeds is not None else ckpt_seeds("ppo", "attitude", ac, ckpt_dir)
+        print(f"\n=== {ac}  (Va={va:.1f}, turb k=sigma_u/W20={turb_k:.4f}, seeds {ss}, "
+              f"n_real {n_real}) ===", flush=True)
+        cells = [("nominal", "-")] + [(d, s) for d in families for s in SEVERITIES]
+        got = {c: [] for c in cells}
+        for seed in ss:
+            fn = controller(ac, ckpt_dir, seed)
+            for dist, sev in cells:
+                got[(dist, sev)] += eval_cell(ac, fn, dist, sev, seed, n_real, maneuvers,
+                                              turb_k, va, va_scale, vz_scale)
+        for c in cells:
+            row = summarize(got[c])
+            rows.append(row); runs += got[c]
+            pr = f"{row['phi_rmse']:.2f} [{row['phi_rmse_lo']:.2f}, {row['phi_rmse_hi']:.2f}]" \
+                if row["phi_rmse"] == row["phi_rmse"] else "crash"
+            print(f"  {METHOD:5s} {c[0]:13s} {c[1]:7s} surv {row['n_survive']}/{row['n']}  "
+                  f"phi IQM {pr}", flush=True)
+    _write(runs, Path(results_dir) / "robustness_runs.csv", RUN_COLS)
+    return _write(rows, Path(results_dir) / "robustness.csv", ROW_COLS)
 
 
-def _write_table(rows, out):
+RUN_COLS = ["aircraft", "method", "seed", "disturbance", "severity", "maneuver", "realization",
+            "survived", "phi_rmse", "hdot_rmse", "va_rmse"]
+ROW_COLS = ["aircraft", "method", "disturbance", "severity", "n_seeds", "n_real", "n",
+            "n_survive", "n_dropped", "survival", "survival_lo", "survival_hi",
+            "phi_rmse", "phi_rmse_lo", "phi_rmse_hi", "hdot_rmse", "hdot_rmse_lo", "hdot_rmse_hi",
+            "va_rmse", "va_rmse_lo", "va_rmse_hi"]
+
+
+def _write(rows, out, cols):
+    def fmt(v):
+        if v is None or (isinstance(v, float) and v != v):
+            return ""
+        return f"{v:.4f}" if isinstance(v, float) else v
     with open(out, "w", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=["aircraft", "method", "disturbance", "severity",
-            "survival", "n_survive", "phi_rmse", "hdot_rmse", "va_rmse"])
+        w = csv.DictWriter(f, fieldnames=cols)
         w.writeheader()
         for r in rows:
-            w.writerow({k: (f"{r[k]:.3f}" if isinstance(r[k], float) and r[k] is not None else r[k])
-                        for k in w.fieldnames})
+            w.writerow({k: fmt(r.get(k)) for k in cols})
     print(f"wrote {out}")
     return out
 

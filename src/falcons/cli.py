@@ -72,7 +72,7 @@ def cmd_benchmark(a):
         ground_effect.run_trim(ge, a.results)
         ground_effect.run_energy(ge, a.checkpoints, a.results)
     elif a.protocol == "robustness":
-        robustness.run(planes, a.checkpoints, a.results)
+        robustness.run(planes, a.checkpoints, a.results, n_real=a.n_real)
     else:
         throughput.run(planes[0], a.checkpoints, a.results)
 
@@ -116,6 +116,8 @@ def main(argv=None):
                    help=f"MPPI sampling draws per cell (default: {ALTITUDE_DRAWS} for altitude, "
                         f"{MANEUVER_DRAWS} for maneuvers)")
     s.add_argument("--mppi-seed", type=int, default=0, help="first MPPI sampling seed")
+    s.add_argument("--n-real", type=int, default=100,
+                   help="robustness: noise/gust realizations per (seed, maneuver, severity)")
     s = sub.add_parser("tables", help="results/*.csv -> results/tables.tex"); _dirs(s)
     s = sub.add_parser("figures", help="render the benchmark figures (all, or the ones named)"); _dirs(s)
     s.add_argument("names", nargs="*")
