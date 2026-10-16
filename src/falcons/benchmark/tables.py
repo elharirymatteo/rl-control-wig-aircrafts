@@ -81,6 +81,23 @@ def pm(v, sd, n_seeds, fmt="{:.2f}", dash="---"):
     return m + (f"\\,$\\pm$\\,{fmt.format(s)}" if k > 1 and s == s else "")
 
 
+def ci(v, lo, hi, fmt="{:.2f}"):
+    """IQM with its 95 % interval, "1.23 [1.10, 1.41]"; --- when the cell has no value."""
+    m = num(v, fmt)
+    if m == "---":
+        return m
+    a, b = num(lo, fmt), num(hi, fmt)
+    return m if a == "---" else f"{m} [{a}, {b}]"
+
+
+def kn(k, n):
+    """A count out of a total, "48/50"."""
+    try:
+        return f"{int(float(k))}/{int(float(n))}"
+    except (TypeError, ValueError):
+        return "---"
+
+
 def pct(x):
     """Signed percentage in math mode, so the sign is a minus rather than a hyphen."""
     v = num(x, "{:+.1f}")
@@ -98,6 +115,8 @@ def block(lines, name):
 def protocol_table(rs):
     if not rs:
         return ""
+    if "rmse_iqm" in rs[0]:
+        return protocol_table_iqm(rs)
     body = []
     for ac in dict.fromkeys(r["aircraft"] for r in rs):
         by = {r["method"]: r for r in rs if r["aircraft"] == ac}
@@ -141,6 +160,43 @@ def protocol_table(rs):
          r"\setlength{\tabcolsep}{4pt}",
          r"\begin{tabular}{llrrrrrr}", r"\toprule",
          r"& Method & $n$ & Surv. & Acq. & RMSE (m) & $t_s$ (s) & Over. (m) \\",
+         r"\midrule"] + body + [r"\end{tabular}", r"\end{table*}", ""])
+
+
+def protocol_table_iqm(rs):
+    """Pooled-statistics form: survival and acquisition as counts over every episode of every
+    seed (draw), error metrics as IQM [95 % CI] over the surviving episodes."""
+    body = []
+    for ac in dict.fromkeys(r["aircraft"] for r in rs):
+        by = {r["method"]: r for r in rs if r["aircraft"] == ac}
+        lines = []
+        for m in METHOD_ORDER:
+            r = by.get(m)
+            if r is None:
+                continue
+            ts = ci(r["settling_iqm"], r["settling_lo"], r["settling_hi"], "{:.1f}") \
+                if float(r["n_acquired"] or 0) >= 5 else "---"
+            rm = ci(r["rmse_iqm"], r["rmse_lo"], r["rmse_hi"],
+                    "{:.3f}" if float(r["rmse_iqm"] or "nan") < 10 else "{:.1f}") \
+                if r["rmse_iqm"] not in ("", "nan") else "---"
+            lines.append(f"& {m} & {int(float(r['n_seeds']))} & "
+                         f"{kn(r['n_survived'], r['n_total'])} & "
+                         f"{kn(r['n_acquired'], r['n_total'])} & {rm} & {ts} & "
+                         f"{ci(r['overshoot_iqm'], r['overshoot_lo'], r['overshoot_hi'])} \\")
+        body += block(lines, PRETTY.get(ac, ac)) + [r"\midrule"]
+    body[-1] = r"\bottomrule"
+    return "\n".join(
+        [r"\begin{table*}[t]",
+         r"\caption{Altitude acquisition and hold. Surv. and Acq. count the episodes, over every "
+         r"training seed (learned) or sampling draw (MPPI), that reach the horizon inside the "
+         r"envelope and that additionally hold the target within 1~m; the remainder are the "
+         r"dropped episodes. Error metrics are the interquartile mean over the surviving episodes "
+         r"with a 95\% hierarchical bootstrap interval (seeds, then episodes). Seeds is the number "
+         r"of training seeds or sampling draws.}",
+         r"\label{tab:altitude-protocol}", r"\centering",
+         r"\setlength{\tabcolsep}{3pt}",
+         r"\begin{tabular}{llrrrrrr}", r"\toprule",
+         r"& Method & Seeds & Surv. & Acq. & RMSE (m) & $t_s$ (s) & Over. (m) \\",
          r"\midrule"] + body + [r"\end{tabular}", r"\end{table*}", ""])
 
 
@@ -195,6 +251,7 @@ def robustness_table(rs):
     rs = [r for r in rs if r["method"] == "PPO"]
     if not rs:
         return ""
+    pooled = "n_real" in rs[0]
     idx = {(r["aircraft"], r["disturbance"], r["severity"]): r for r in rs}
     fams = [("obs_noise", "Sensor noise"), ("sensor_delay", "Sensor delay"),
             ("action_delay", "Action delay"), ("wind", "Turbulence")]
@@ -206,7 +263,11 @@ def robustness_table(rs):
             if r is None:
                 out += ["---", "---"]
                 continue
-            out += [num(r["survival"], "{:.2f}"), num(r["phi_rmse"], "{:.1f}")]
+            if pooled:
+                out += [kn(r["n_survive"], r["n"]),
+                        ci(r["phi_rmse"], r["phi_rmse_lo"], r["phi_rmse_hi"], "{:.1f}")]
+            else:
+                out += [num(r["survival"], "{:.2f}"), num(r["phi_rmse"], "{:.1f}")]
         return " & ".join(out)
 
     body = [f"Nominal & --- & {cells('nominal', '-')} \\\\", r"\midrule"]
@@ -274,6 +335,11 @@ def maneuver_table(rs):
                           and x["maneuver"] == sh), None)
                 if r is None or float(r["survival"]) == 0.0:
                     cells.append("---")
+                elif r.get("phi_rmse_iqm"):
+                    # pooled form: IQM [95% CI] over the surviving runs, departures counted
+                    d = int(float(r.get("n_departed") or 0))
+                    cells.append(ci(r["phi_rmse_iqm"], r["phi_rmse_lo"], r["phi_rmse_hi"], "{:.1f}")
+                                 + (f"$^{{{d}}}$" if d else ""))
                 else:
                     # spread across the runs of the cell (training seeds, or sampling draws for
                     # MPPI); a method flown once has none and carries the bare mean

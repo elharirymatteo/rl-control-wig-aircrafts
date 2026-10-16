@@ -72,7 +72,7 @@ def cmd_benchmark(a):
         ground_effect.run_trim(ge, a.results)
         ground_effect.run_energy(ge, a.checkpoints, a.results)
     elif a.protocol == "robustness":
-        robustness.run(planes, a.checkpoints, a.results)
+        robustness.run(planes, a.checkpoints, a.results, n_real=a.n_real)
     elif a.protocol == "ge-training":
         from falcons.benchmark import ge_training
         ge_training.run(planes, a.seeds, a.parents or a.checkpoints, a.children, a.results,
@@ -129,6 +129,8 @@ def main(argv=None):
     s.add_argument("--ge-steps", type=int, default=20_000_000,
                    help="ge-training: fine-tuning env steps per child")
     s.add_argument("--episodes", type=int, default=200, help="ge-training: episodes per eval cell")
+    s.add_argument("--n-real", type=int, default=100,
+                   help="robustness: noise/gust realizations per (seed, maneuver, severity)")
     s = sub.add_parser("tables", help="results/*.csv -> results/tables.tex"); _dirs(s)
     s = sub.add_parser("figures", help="render the benchmark figures (all, or the ones named)"); _dirs(s)
     s.add_argument("names", nargs="*")

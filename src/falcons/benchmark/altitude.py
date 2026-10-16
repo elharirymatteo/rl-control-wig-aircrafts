@@ -105,7 +105,9 @@ def aggregate(rows):
 
 
 # ─── learned policies: one batched warp env covers every (target, direction, episode) ────────
-def run_learned(plane, algo, seed=0, ckpt_dir=CKPT_DIR):
+def run_learned(plane, algo, seed=0, ckpt_dir=CKPT_DIR, return_ic=False):
+    """Per-episode metrics (None for an episode that did not survive); with `return_ic`, each
+    episode is dict(target, h0, m) so the raw table can record its initial condition."""
     import torch
     import warp as wp
     from falcons.envs.configs import altitude_env_cfg
@@ -146,12 +148,14 @@ def run_learned(plane, algo, seed=0, ckpt_dir=CKPT_DIR):
             live &= ~d.cpu().numpy().astype(bool)
             if not live.any():
                 break
-    return [episode_metrics(hist[:, i], float(tgt[i]), float(alt0[i]), thr[:, i])
-            for i in range(n)]
+    ms = [episode_metrics(hist[:, i], float(tgt[i]), float(alt0[i]), thr[:, i]) for i in range(n)]
+    if return_ic:
+        return [dict(target=float(tgt[i]), h0=float(alt0[i]), m=ms[i]) for i in range(n)]
+    return ms
 
 
 # ─── classical controllers: one subprocess per commanded altitude (warp bakes the reference) ──
-def run_classical(plane, algo, mppi_seeds=(0, 1, 2), ckpt_dir=CKPT_DIR):
+def run_classical(plane, algo, mppi_seeds=(0, 1, 2), ckpt_dir=CKPT_DIR, return_ic=False):
     """One sweep of episodes per sampler seed: the LQR is a deterministic law and gets a single
     sweep, MPPI one per entry of `mppi_seeds` (handed to the child as MPPI_DRAW).
 
@@ -201,7 +205,8 @@ def run_classical(plane, algo, mppi_seeds=(0, 1, 2), ckpt_dir=CKPT_DIR):
                         # as one would hide a broken child inside the survival tolerance
                         raise RuntimeError(f"child crashed: {plane} {algo} T={T} h0={h0:.1f}\n"
                                            f"{p.stderr[-2000:]}")
-                    rows.append(json.loads(line[-1][4:])["m"])
+                    got = json.loads(line[-1][4:])
+                    rows.append(got if return_ic else got["m"])
         sweeps.append(rows)
     return sweeps
 
@@ -234,7 +239,7 @@ def run(planes, ckpt_dir=CKPT_DIR, results_dir=RESULTS_DIR, algos=tuple(RL_ALGOS
     (see above), so it is swept once per `mppi_seeds` entry and reported the same way."""
     from falcons.controllers.policies import seeds
     os.makedirs(results_dir, exist_ok=True)
-    table = []
+    table, raw = [], []
     for ac in planes:
         for algo in algos:
             try:
@@ -243,13 +248,28 @@ def run(planes, ckpt_dir=CKPT_DIR, results_dir=RESULTS_DIR, algos=tuple(RL_ALGOS
                     if not ss:
                         raise FileNotFoundError(
                             f"no checkpoints for {algo} altitude {ac} under {ckpt_dir}")
-                    per = [aggregate(run_learned(ac, algo, s, ckpt_dir)) for s in ss]
+                    sweeps = [run_learned(ac, algo, s, ckpt_dir, return_ic=True) for s in ss]
+                    labels = list(ss)
                 else:
-                    per = [aggregate(rows) for rows in
-                           run_classical(ac, algo, mppi_seeds, ckpt_dir)]
+                    sweeps = run_classical(ac, algo, mppi_seeds, ckpt_dir, return_ic=True)
+                    # one group per sweep; repeated draw seeds (archive mode) stay separate groups
+                    labels = (list(range(len(sweeps))) if algo == "mppi"
+                              and len(set(mppi_seeds)) < len(mppi_seeds)
+                              else list(mppi_seeds) if algo == "mppi" else [0])
             except FileNotFoundError as e:
                 print(f"  skip {algo} {ac}: {e}")
                 continue
+            per = [aggregate([ep["m"] for ep in sw]) for sw in sweeps]
+            for lab, sw in zip(labels, sweeps):
+                for i, ep in enumerate(sw):
+                    m = ep["m"] or {}
+                    raw.append(dict(aircraft=ac, method=algo.upper(), group=lab, episode=i,
+                                    target=ep["target"], h0=round(ep["h0"], 4),
+                                    survived=int(ep["m"] is not None),
+                                    acquired=int(ep["m"] is not None
+                                                 and np.isfinite(m.get("settling", np.inf))),
+                                    rmse=m.get("rmse"), settling=m.get("settling"),
+                                    overshoot=m.get("overshoot"), energy=m.get("energy")))
             a = {k: _nanmean([p[k] for p in per]) for k in
                  ("survival", "rmse", "settling", "settled_frac", "overshoot", "energy")}
             a.update({f"{k}_std": _nanstd([p[k] for p in per]) for k in
@@ -257,6 +277,8 @@ def run(planes, ckpt_dir=CKPT_DIR, results_dir=RESULTS_DIR, algos=tuple(RL_ALGOS
             a.update(aircraft=ac, method=algo.upper(), n=per[0]["n"], n_seeds=len(per),
                      acquired=_nanmean([p["survival"] * p["settled_frac"] for p in per]),
                      acquired_std=_nanstd([p["survival"] * p["settled_frac"] for p in per]))
+            a.update(pooled([r for r in raw if r["aircraft"] == ac
+                             and r["method"] == algo.upper()]))
             table.append(a)
             print(f"{ac:16s} {algo.upper():5s} n_seeds {a['n_seeds']}  "
                   f"surv {a['survival']:.3f}+-{a['survival_std']:.3f}  "
@@ -267,7 +289,7 @@ def run(planes, ckpt_dir=CKPT_DIR, results_dir=RESULTS_DIR, algos=tuple(RL_ALGOS
     cols = ["aircraft", "method", "n", "n_seeds", "survival", "survival_std",
             "acquired", "acquired_std", "rmse", "rmse_std", "settling", "settling_std",
             "settled_frac", "settled_frac_std", "overshoot", "overshoot_std",
-            "energy", "energy_std"]
+            "energy", "energy_std"] + POOLED_COLS
     out = Path(results_dir) / "altitude.csv"
     with open(out, "w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=cols, extrasaction="ignore")
@@ -275,6 +297,49 @@ def run(planes, ckpt_dir=CKPT_DIR, results_dir=RESULTS_DIR, algos=tuple(RL_ALGOS
         for r in table:
             w.writerow(r)
     print(f"wrote {out}")
+    ep = Path(results_dir) / "altitude_episodes.csv"
+    with open(ep, "w", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=EPISODE_COLS)
+        w.writeheader()
+        for r in raw:
+            w.writerow(r)
+    print(f"wrote {ep}")
+    return out
+
+
+# ─── pooled statistics over every episode of a cell (falcons/benchmark/stats.py) ──────────────
+EPISODE_COLS = ["aircraft", "method", "group", "episode", "target", "h0", "survived", "acquired",
+                "rmse", "settling", "overshoot", "energy"]
+POOLED_COLS = ["n_total", "n_survived", "n_dropped", "survival_lo", "survival_hi",
+               "n_acquired", "acquired_lo", "acquired_hi",
+               "rmse_iqm", "rmse_lo", "rmse_hi", "settling_iqm", "settling_lo", "settling_hi",
+               "overshoot_iqm", "overshoot_lo", "overshoot_hi",
+               "energy_iqm", "energy_lo", "energy_hi"]
+
+
+def pooled(eps):
+    """Cell statistics over the episodes of every group (training seed, MPPI draw) pooled:
+    survival and acquisition as counts with an interval, error metrics as the IQM over the
+    surviving episodes (settling time over the episodes that settled) with a hierarchical
+    bootstrap interval that resamples groups, then episodes. The legacy mean +- std-across-groups
+    columns are kept beside these."""
+    from falcons.benchmark.stats import rate, summary
+    g = np.array([e["group"] for e in eps])
+    surv = np.array([e["survived"] for e in eps], dtype=bool)
+    acq = np.array([e["acquired"] for e in eps], dtype=bool)
+    out = {}
+    s = rate(surv, g)
+    out.update(n_total=s["n"], n_survived=s["k"], n_dropped=s["n"] - s["k"],
+               survival_lo=s["lo"], survival_hi=s["hi"])
+    a = rate(acq, g)
+    out.update(n_acquired=a["k"], acquired_lo=a["lo"], acquired_hi=a["hi"])
+    for k in ("rmse", "overshoot", "energy"):
+        v = np.array([np.nan if e[k] is None else e[k] for e in eps], dtype=float)
+        r = summary(v[surv], g[surv])
+        out.update({f"{k}_iqm": r["iqm"], f"{k}_lo": r["lo"], f"{k}_hi": r["hi"]})
+    st = np.array([np.nan if e["settling"] is None else e["settling"] for e in eps], dtype=float)
+    r = summary(st[acq], g[acq])
+    out.update(settling_iqm=r["iqm"], settling_lo=r["lo"], settling_hi=r["hi"])
     return out
 
 

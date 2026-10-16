@@ -101,11 +101,11 @@ def _tracking(cmd, ach, kind, dt):
     return out
 
 
-def make_env(plane, steps, turbulence=None):
+def make_env(plane, steps, turbulence=None, n=1):
     cfg = attitude_env_cfg(plane, horizon=steps + 2)
     if turbulence:
         cfg["turbulence"] = turbulence
-    return AttitudeEnv(1, "cuda", cfg)
+    return AttitudeEnv(n, "cuda", cfg)
 
 
 @torch.no_grad()
@@ -165,7 +165,12 @@ def fly(plane, maneuver, controller_factory, turbulence=None, turb_W20=None):
         tr["phi_cmd"].append(np.degrees(phi_s[t])); tr["climb"].append(climb)
         tr["hdot_cmd"].append(hdot_s[t]); tr["Va"].append(Va); tr["va_cmd"].append(va_s[t])
         tr["pos"].append(p.copy()); tr["yaw"].append(yaw)
-        e.step(act)   # advance the real dynamics
+        _, _, done, info = e.step(act)   # advance the real dynamics
+        # the env terminates on stall, bank limit, ground contact or a non-finite state and then
+        # RESETS that env in place; scoring on past that point would score the respawned aircraft
+        if bool(done[0]) and not bool(info["truncated"][0]):
+            survived = False
+            break
 
     tr = {k: np.array(v, dtype=float) for k, v in tr.items()}
     trace = tr
@@ -185,6 +190,77 @@ def fly(plane, maneuver, controller_factory, turbulence=None, turb_W20=None):
                 # full per-channel bundles (rmse / nrmse / theil_u [+ gain,phase_lag_s for bank])
                 phi=phi, climb=climb, airspeed=airspeed, descriptors=desc,
                 steps=steps, t_fail=None, trace=trace)
+
+
+@torch.no_grad()
+def fly_batch(plane, maneuver, controller_factory, n, turbulence=None, turb_W20=None,
+              turb_seed=None):
+    """`fly` for n independent realizations at once: n parallel envs fly the identical command
+    stream, each with its own Dryden gust stream (the warp filter draws per env index from one
+    base seed, set here to `turb_seed` so the set of realizations is reproducible) and its own
+    observation noise when the controller adds it per row. Same envelope guard and scoring as
+    `fly`, applied per env; a departed env is masked out from the step it left the envelope.
+
+    Returns a list of n dicts: survival, phi_rmse, hdot_rmse, va_rmse (deg, m/s, m/s; None for a
+    departed run) and t_fail."""
+    probe = make_env(plane, 10)
+    phi_s, hdot_s, va_s = maneuver_stream(maneuver, probe.phi_max_full,
+                                          probe.hdot_max_full, probe.base_vel)
+    steps = len(phi_s)
+    e = make_env(plane, steps, turbulence=turbulence, n=n)
+    e.reset()
+    tm = getattr(e.model.wind_model, "turbulence_model", None)
+    if tm is not None:
+        if turb_seed is not None:
+            tm.seed(int(turb_seed))
+        if turb_W20 is not None:
+            e.set_turb_W20(turb_W20)
+    controller = controller_factory(e, phi_s, hdot_s, va_s)
+    base = e.base_vel
+    alive = np.ones(n, dtype=bool)
+    t_fail = np.full(n, np.nan)
+    roll = np.full((steps, n), np.nan); climb = np.full((steps, n), np.nan)
+    Va_h = np.full((steps, n), np.nan)
+    ones = np.ones(n, dtype=np.float32)
+    for t in range(steps):
+        wp.copy(e._phi_tgt, wp.array(phi_s[t] * ones, device="cuda"))
+        wp.copy(e._hdot_tgt, wp.array(hdot_s[t] * ones, device="cuda"))
+        wp.copy(e._va_tgt, wp.array(va_s[t] * ones, device="cuda"))
+        e._obs_launch()
+        obs = wp.to_torch(e._obs)
+        act = controller(obs).clamp(-1.0, 1.0)
+
+        s = e.model._state
+        q = s["orientation"].numpy(); vb = s["linear_vel"].numpy(); p = s["position"].numpy()
+        qx, qy, qz, qw = q[:, 0], q[:, 1], q[:, 2], q[:, 3]
+        r_ = np.arctan2(2 * (qw * qx + qy * qz), 1 - 2 * (qx ** 2 + qy ** 2))
+        tt = 2.0 * np.cross(q[:, :3], vb)
+        vw = vb + qw[:, None] * tt + np.cross(q[:, :3], tt)
+        va = np.linalg.norm(vb, axis=1)
+        out = (~np.isfinite(p).all(axis=1) | (np.abs(p).max(axis=1) > 2000.0)
+               | (va < 0.55 * base) | (va > 1.8 * base))
+        newly = alive & out
+        t_fail[newly] = t * DT; alive &= ~out
+        roll[t, alive] = np.degrees(r_[alive]); climb[t, alive] = -vw[alive, 2]
+        Va_h[t, alive] = va[alive]
+        if not alive.any():
+            break
+        _, _, done, info = e.step(act)
+        term = (done & ~info["truncated"].bool()).cpu().numpy()
+        newly = alive & term
+        t_fail[newly] = t * DT; alive &= ~term
+        roll[t, newly] = np.nan; climb[t, newly] = np.nan; Va_h[t, newly] = np.nan
+
+    phi_cmd = np.degrees(phi_s)[:, None]; hd_cmd = np.asarray(hdot_s)[:, None]
+    va_cmd = np.asarray(va_s)[:, None]
+    sl = slice(SETTLE, None)
+    rms = lambda d: np.sqrt(np.nanmean(d[sl] ** 2, axis=0))
+    phi_r, hd_r, va_r = rms(roll - phi_cmd), rms(climb - hd_cmd), rms(Va_h - va_cmd)
+    return [dict(survival=1.0 if alive[i] else 0.0,
+                 phi_rmse=float(phi_r[i]) if alive[i] else None,
+                 hdot_rmse=float(hd_r[i]) if alive[i] else None,
+                 va_rmse=float(va_r[i]) if alive[i] else None,
+                 t_fail=None if alive[i] else float(t_fail[i])) for i in range(n)]
 
 
 # ───── cells, caching, table ─────
@@ -272,6 +348,7 @@ def aggregate(reps, tol_deg):
     out = dict(reps[0])
     out["survival"] = float(np.mean([r["survival"] for r in reps]))
     out["n_reps"] = len(reps)
+    out["pooled"] = pooled(reps, tol_deg)
     if not ok:
         return out
     order = sorted(ok, key=lambda r: r["phi"]["rmse"])
@@ -313,6 +390,7 @@ def cell(plane, maneuver, method, ckpt_dir=CKPT_DIR, cache_dir=RESULTS_DIR / "tr
     n = mppi_draws if method in DRAWS else 1
     reps = []
     for suf, factory in controllers(plane, ckpt_dir)[method]:
+        seed = int(suf[2:]) if suf else 0
         name = f"{plane}_{maneuver}_{ALGO[method]}{suf}{'' if n == 1 else f'_r{n}'}.pkl"
         path = Path(cache_dir) / name
         if not refresh and path.exists():
@@ -325,8 +403,40 @@ def cell(plane, maneuver, method, ckpt_dir=CKPT_DIR, cache_dir=RESULTS_DIR / "tr
             os.makedirs(cache_dir, exist_ok=True)
             with open(path, "wb") as f:
                 pickle.dump(got, f)
+        for k, r in enumerate(got):
+            r["group"] = mppi_seed + k if n > 1 else seed     # sampling draw, or training seed
         reps += got
-    return reps[0] if len(reps) == 1 else aggregate(reps, tol_deg)
+    if len(reps) == 1:
+        one = dict(reps[0])
+        one["pooled"] = pooled(reps, tol_deg)
+        return one
+    return aggregate(reps, tol_deg)
+
+
+POOLED_COLS = ["n_departed", "survival_lo", "survival_hi", "phi_rmse_iqm", "phi_rmse_lo",
+               "phi_rmse_hi", "time_in_band_iqm", "time_in_band_lo", "time_in_band_hi",
+               "hdot_rmse_iqm", "hdot_rmse_lo", "hdot_rmse_hi", "va_rmse_iqm", "va_rmse_lo",
+               "va_rmse_hi"]
+
+
+def pooled(reps, tol_deg):
+    """Cell statistics over every run (training seeds, or MPPI sampling draws): departures as a
+    count with an interval on survival, the error metrics as the IQM over the surviving runs with
+    a hierarchical bootstrap interval (falcons/benchmark/stats.py). Time in band in percent."""
+    from falcons.benchmark.stats import rate, summary
+    g = np.array([r.get("group", 0) for r in reps])
+    surv = np.array([r["survival"] == 1.0 for r in reps])
+    s = rate(surv, g)
+    out = dict(n_departed=s["n"] - s["k"], survival_lo=s["lo"], survival_hi=s["hi"])
+    ok = [r for r in reps if r["survival"] == 1.0]
+    go = np.array([r.get("group", 0) for r in ok])
+    for name, vals in (("phi_rmse", [r["phi"]["rmse"] for r in ok]),
+                       ("time_in_band", [100.0 * time_in_band(r["trace"], tol_deg) for r in ok]),
+                       ("hdot_rmse", [r["climb"]["rmse"] for r in ok]),
+                       ("va_rmse", [r["airspeed"]["rmse"] for r in ok])):
+        x = summary(vals, go) if ok else dict(iqm=np.nan, lo=np.nan, hi=np.nan)
+        out.update({f"{name}_iqm": x["iqm"], f"{name}_lo": x["lo"], f"{name}_hi": x["hi"]})
+    return out
 
 
 def time_in_band(trace, tol_deg, settle=50):
@@ -339,6 +449,14 @@ def time_in_band(trace, tol_deg, settle=50):
 STD_FMT = {"phi_nrmse_pct": ".1f", "phi_theil_u": ".3f", "phi_gain": ".3f",
            "phi_phase_lag_s": ".3f", "time_in_band_pct": ".1f", "hdot_rmse_ms": ".3f",
            "hdot_nrmse_pct": ".1f", "va_rmse_ms": ".2f"}
+
+
+def _pooled_cells(r):
+    """The pooled-statistics cells of one row, empty where the cell carries none."""
+    p = r.get("pooled", {})
+    f = lambda v, fmt: "" if v is None or v != v else format(v, fmt)
+    return {c: (str(p[c]) if c == "n_departed" and c in p else f(p.get(c), ".4f"))
+            for c in POOLED_COLS}
 
 
 def _std_cells(r):
@@ -387,7 +505,7 @@ def run(planes, ckpt_dir=CKPT_DIR, results_dir=RESULTS_DIR, refresh=False,
                         phi_phase_lag_s="", time_in_band_pct="", hdot_rmse_ms="", hdot_nrmse_pct="",
                         va_rmse_ms="", phi_max_deg=f"{d['phi_max_deg']:.1f}",
                         turn_radius_m=f"{d['turn_radius_m']:.0f}", load_factor=f"{d['load_factor']:.3f}",
-                        **{f"{c}_std": "" for c in STD_FMT}))
+                        **{f"{c}_std": "" for c in STD_FMT}, **_pooled_cells(r)))
                     continue
                 p = r["phi"]
                 tib = r["tib"] if "tib" in r else time_in_band(r["trace"], tol_deg)
@@ -411,14 +529,15 @@ def run(planes, ckpt_dir=CKPT_DIR, results_dir=RESULTS_DIR, refresh=False,
                     hdot_nrmse_pct=(f"{hdn*100:.1f}" if hdn is not None else ""),
                     va_rmse_ms=f"{r['airspeed']['rmse']:.2f}",
                     phi_max_deg=f"{d['phi_max_deg']:.1f}", turn_radius_m=f"{d['turn_radius_m']:.0f}",
-                    load_factor=f"{d['load_factor']:.3f}", **_std_cells(r)))
+                    load_factor=f"{d['load_factor']:.3f}", **_std_cells(r), **_pooled_cells(r)))
 
     cols = ["aircraft", "maneuver", "method", "n_runs", "survival", "survival_std",
             "phi_rmse_deg", "phi_rmse_std", "phi_nrmse_pct", "phi_nrmse_pct_std",
             "phi_theil_u", "phi_theil_u_std", "phi_gain", "phi_gain_std",
             "phi_phase_lag_s", "phi_phase_lag_s_std", "time_in_band_pct", "time_in_band_pct_std",
             "hdot_rmse_ms", "hdot_rmse_ms_std", "hdot_nrmse_pct", "hdot_nrmse_pct_std",
-            "va_rmse_ms", "va_rmse_ms_std", "phi_max_deg", "turn_radius_m", "load_factor"]
+            "va_rmse_ms", "va_rmse_ms_std", "phi_max_deg", "turn_radius_m", "load_factor"] \
+        + POOLED_COLS
     out = Path(results_dir) / "maneuvers.csv"
     with open(out, "w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=cols)
