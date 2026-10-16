@@ -5,6 +5,7 @@ from abc import ABC, abstractmethod
 from .quaternion_math import quat_normalize, quat_rotate_vector
 from .forces_moments import ForceMomentCalculatorMixin
 from .wind_model import WindModelMixin
+from falcons.sim.cpu.actuators import DP5_A, DP5_B
 
 
 class PhysicsIntegrator():
@@ -18,11 +19,12 @@ class PhysicsIntegrator():
     
     def _validate_solver_type(self):
         """Validate that the solver type is supported"""
-        valid_solvers = ['RK45', 'RK23', 'DOP853', 'Radau', 'BDF', 'LSODA', 'euler', 'odeint']
+        valid_solvers = ['RK45', 'RK23', 'DOP853', 'Radau', 'BDF', 'LSODA', 'euler', 'odeint', 'dp5']
         if self.solver_type not in valid_solvers:
             raise ValueError(f"Unsupported solver type: {self.solver_type}. Valid types: {valid_solvers}")
     
-    def integrate(self, derivatives_func: Callable, initial_state: np.ndarray, dt: float) -> np.ndarray:
+    def integrate(self, derivatives_func: Callable, initial_state: np.ndarray, dt: float,
+                  project: Callable = None) -> np.ndarray:
         """
         Integrate the state forward by dt using the specified solver
         
@@ -40,6 +42,8 @@ class PhysicsIntegrator():
             return self._integrate_solve_ivp(derivatives_func, initial_state, dt)
         elif self.solver_type == 'euler':
             return self._integrate_euler(derivatives_func, initial_state, dt)
+        elif self.solver_type == 'dp5':
+            return self._integrate_dp5(derivatives_func, initial_state, dt, project)
         else:
             raise ValueError(f"Unsupported solver type: {self.solver_type}")
     
@@ -63,6 +67,19 @@ class PhysicsIntegrator():
         )
         return sol.y[:, -1]
     
+    def _integrate_dp5(self, derivatives_func: Callable, x0: np.ndarray, dt: float,
+                       project: Callable = None) -> np.ndarray:
+        """One fixed Dormand-Prince step (5th-order weights, no error control): the Warp plant's
+        rk45_update (falcons/sim/warp/aerodynamics.py). `project` maps a stage state back onto the
+        manifold; the rigid body passes the quaternion normalisation Warp applies at every stage."""
+        p = project if project is not None else (lambda x: x)
+        x0 = p(np.asarray(x0, dtype=float))
+        k = []
+        for a in DP5_A:
+            xs = x0 + sum(ai * ki for ai, ki in zip(a, k))
+            k.append(dt * derivatives_func(0.0, p(xs) if k else xs))
+        return p(x0 + sum(b * ki for b, ki in zip(DP5_B, k)))
+
     def _integrate_euler(self, derivatives_func: Callable, x0: np.ndarray, dt: float) -> np.ndarray:
         """Simple Euler integration"""
         dx = derivatives_func(0, x0)
@@ -247,11 +264,13 @@ class StatePropagationMixin(ForceMomentCalculatorMixin, WindModelMixin):
         def derivatives_wrapper(*args):
             return self._compute_derivatives(*args)
         
-        # Integrate
+        # Integrate (forces and moments are held at the values computed above over the whole
+        # step, in every solver: the Warp and Torch plants do the same)
         final_state_vector = self.integrator.integrate(
             derivatives_wrapper, 
             initial_state_vector, 
-            dt
+            dt,
+            project=self._normalize_quaternion,
         )
         
         # Convert back to state dictionary
@@ -259,6 +278,13 @@ class StatePropagationMixin(ForceMomentCalculatorMixin, WindModelMixin):
         
         return self.state
     
+    @staticmethod
+    def _normalize_quaternion(state_vector: np.ndarray) -> np.ndarray:
+        """State vector with its quaternion block [9:13] normalised (used by the 'dp5' solver)."""
+        x = np.array(state_vector, dtype=float)
+        x[9:13] = quat_normalize(x[9:13])
+        return x
+
     def _compute_derivatives(self, *args):
         """
         Compute derivatives of the state vector for integration, including turbulence effects.

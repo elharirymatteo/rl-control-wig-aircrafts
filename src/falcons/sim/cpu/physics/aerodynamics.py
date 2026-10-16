@@ -156,7 +156,8 @@ class PolynomialAerodynamics(AerodynamicsBase):
         return mu_l, mu_d
     
     def get_coefficients_with_ground_effect(self, alpha: float, beta: float, aero_action: np.ndarray, 
-                                          state: Dict[str, np.ndarray]) -> Dict[str, float]:
+                                          state: Dict[str, np.ndarray],
+                                          enabled: bool = True) -> Dict[str, float]:
         """
         Get all aerodynamic coefficients including ground effect
         
@@ -173,8 +174,9 @@ class PolynomialAerodynamics(AerodynamicsBase):
         CD_oge, CY, CL_oge = self.get_force_coefficients(alpha, beta, aero_action)
         Cl, Cm, Cn = self.get_moment_coefficients(alpha, beta, aero_action)
         
-        # Apply ground effect to lift and drag
-        mu_l, mu_d = self.get_ground_effect_factors(state)
+        # Apply ground effect to lift and drag (enabled=False: out of ground effect, as the Warp
+        # plant's in_ground_effect=False)
+        mu_l, mu_d = self.get_ground_effect_factors(state) if enabled else (1.0, 1.0)
         CL = CL_oge * mu_l
         # induced drag k C_L^2 only (falcons/aircraft/polar.py); parasitic drag is unchanged
         CD = CD_oge + self.VP['wing']['induced_drag_k'] * CL_oge**2 * (mu_d * mu_l**2 - 1.0)
@@ -291,7 +293,8 @@ class ClassicalAerodynamics(AerodynamicsBase):
         return mu_l, mu_d
     
     def get_coefficients_with_ground_effect(self, alpha: float, beta: float, aero_action: np.ndarray, 
-                                          state: Dict[str, np.ndarray]) -> Dict[str, float]:
+                                          state: Dict[str, np.ndarray],
+                                          enabled: bool = True) -> Dict[str, float]:
         """Get all aerodynamic coefficients including ground effect"""
         
         # Get force coefficients
@@ -299,7 +302,7 @@ class ClassicalAerodynamics(AerodynamicsBase):
         Cl, Cm, Cn = self.get_moment_coefficients(alpha, beta, aero_action)
         
         # Apply ground effect
-        mu_l, mu_d = self.get_ground_effect_factors(state)
+        mu_l, mu_d = self.get_ground_effect_factors(state) if enabled else (1.0, 1.0)
         CL = CL_oge * mu_l
         CD = CD_oge * mu_d
         
@@ -390,7 +393,7 @@ class AerodynamicsCalculatorMixin(AtmosphereStateMixin):
         
         # Compute coefficients with ground effect
         coeffs = self.aerodynamics.get_coefficients_with_ground_effect(
-            alpha, beta, aero_action, state
+            alpha, beta, aero_action, state, enabled=getattr(self, 'in_ground_effect', True)
         )
         
         # Store coefficients as instance attributes

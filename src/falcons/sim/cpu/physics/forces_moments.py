@@ -56,9 +56,13 @@ class AircraftForcesAndMoments(ForcesAndMomentsBase):
     """Forces and moments computation for airship using modular aerodynamics"""
     
     def __init__(self, vehicle_params, aerodynamic_params, environment_params, 
-                 aerodynamics_model):
+                 aerodynamics_model, warp_parity: bool = False):
         super().__init__(vehicle_params, aerodynamic_params, environment_params)
         self.aerodynamics = aerodynamics_model
+        # Propulsion as the Warp plant models it (compute_thrust_forces_and_moments): momentum
+        # theory for EVERY motor type, unclipped, and no net reaction torque from a single
+        # centreline motor (Warp splits it into two counter-rotating half-disc thrusters).
+        self.warp_parity = warp_parity
         
         # Initialize storage for component forces/moments (for history)
         self.F_aero = np.zeros(3)
@@ -133,6 +137,21 @@ class AircraftForcesAndMoments(ForcesAndMomentsBase):
         
         self.M_aero = np.array([Mx, My, Mz])
         return self.M_aero
+
+    def rate_damping_moment(self, angular_vel: np.ndarray,
+                            aerodynamic_vars: Dict[str, float]) -> np.ndarray:
+        """Rotary damping, which the polynomial model does not contain: Clp (p b/2V) Q S b,
+        Cmq (q c/2V) Q S c, Cnr (r b/2V) Q S b, on the body rates (not the gust-relative ones),
+        with V floored at 1 m/s -- the Warp and Torch plants' form. Derivatives default to 0."""
+        Q, S = aerodynamic_vars['Q'], self.VP['wing']['area']
+        b, c = self.VP['wing']['span'], self.VP['wing']['mac']
+        Vc = max(aerodynamic_vars['Va'], 1.0)
+        p, q, r = angular_vel
+        return np.array([
+            self.AP.get('Clp', 0.0) * (p * b / (2.0 * Vc)) * Q * S * b,
+            self.AP.get('Cmq', 0.0) * (q * c / (2.0 * Vc)) * Q * S * c,
+            self.AP.get('Cnr', 0.0) * (r * b / (2.0 * Vc)) * Q * S * b,
+        ])
     
     # ===========================
     # Motor Type Specific Methods
@@ -308,6 +327,10 @@ class AircraftForcesAndMoments(ForcesAndMomentsBase):
         # Early return if no motors configured
         if not motor_configs:
             return self.F_thrust, self.M_thrust
+
+        if self.warp_parity:
+            return self._compute_propulsion_warp(motor_action, list(motor_configs.values()),
+                                                 aerodynamic_vars)
         
         # Validate input size
         if len(motor_action) != len(motor_configs):
@@ -332,6 +355,35 @@ class AircraftForcesAndMoments(ForcesAndMomentsBase):
         
         return self.F_thrust, self.M_thrust
     
+    def _compute_propulsion_warp(self, motor_action, motors, aero_vars):
+        """falcons/sim/warp/aerodynamics.py:compute_thrust_forces_and_moments, motor by motor.
+
+        T = 1/2 rho Sp C_p Vd (Vd - Va), Vd = Va + throttle (k_m - Va), for electric and piston
+        alike and without a thrust ceiling; the first motor's propeller data and thrust axis are
+        used for every motor, as Warp does. Reaction torque -k_q (k_o throttle)^2 about body x is
+        applied with the sign Warp gives the first (-) and second (+) motor; a single motor gets
+        none, because Warp models it as two half-disc thrusters whose torques cancel."""
+        if len(motor_action) != len(motors):
+            raise ValueError(f"Motor action size ({len(motor_action)}) doesn't match "
+                             f"configured motors ({len(motors)})")
+        first = motors[0]
+        prop = first['motor_propeller_data']
+        axis = np.array(first['thrust_vector'], dtype=float)
+        axis = axis / np.linalg.norm(axis)
+        Va, rho = aero_vars['Va'], aero_vars.get('rho', 1.225)
+        self.F_thrust, self.M_thrust = np.zeros(3), np.zeros(3)
+        for i, motor in enumerate(motors):
+            thr = float(np.clip(motor_action[i], 0.0, 1.0))
+            Vd = Va + thr * (prop['k_m'] - Va)
+            force = 0.5 * rho * prop['Sp'] * prop['C_p'] * Vd * (Vd - Va) * axis
+            moment = np.cross(np.array(motor['position'], dtype=float), force)
+            if len(motors) > 1:
+                torque = -prop['k_q'] * (prop['k_o'] * thr) ** 2
+                moment[0] += torque if i == 0 else -torque
+            self.F_thrust += force
+            self.M_thrust += moment
+        return self.F_thrust, self.M_thrust
+
     # ===========================
     # Validation Methods
     # ===========================
@@ -390,7 +442,8 @@ class ForceMomentCalculatorMixin(AerodynamicsCalculatorMixin):
         """Initialize force/moment calculator"""
         if self.force_moment_calculator is None:
             self.force_moment_calculator = AircraftForcesAndMoments(
-                self.VP, self.AP, self.EP, self.aerodynamics
+                self.VP, self.AP, self.EP, self.aerodynamics,
+                warp_parity=getattr(self, 'warp_parity', False),
             )
     
     def get_forces_moments_applied_to_body(self):
@@ -415,6 +468,9 @@ class ForceMomentCalculatorMixin(AerodynamicsCalculatorMixin):
         self.Mb_aero = self.force_moment_calculator.compute_aerodynamic_moments_from_coeffs(
             self.coeffs, aero_vars
         )
+        if getattr(self, 'rate_damping', False):
+            self.Mb_aero = self.Mb_aero + self.force_moment_calculator.rate_damping_moment(
+                self.state['angular_vel'], aero_vars)
         
         # Compute propulsion forces and moments
         self.Fb_thrust, self.Mb_thrust = self.force_moment_calculator.compute_propulsion_forces_moments(
