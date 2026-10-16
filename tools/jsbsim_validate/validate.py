@@ -15,7 +15,8 @@ Five checks, cheapest first, so that a failure in an early one explains the late
                    configured step and at a refined one, because the plant's own time-step error
                    is first order and larger than anything else measured here.
   4 ground effect  FALCON-S's lift and drag against JSBSim's over a height sweep. They part
-                   company below h/b ~ 1 by exactly the mu_l and mu_d the model predicts.
+                   company below h/b ~ 1 by exactly what the model predicts: mu_l on lift, and
+                   mu_d mu_l^2 on the induced part k C_L^2 of the drag.
   5 rollout IGE    the same rollout started low. Divergence here is the ground-effect model
                    doing its job, not a failure.
 
@@ -144,7 +145,7 @@ def jsbsim_ic(fdm, h: float, euler: np.ndarray, uvw: np.ndarray, pqr: np.ndarray
         fdm[f"fcs/{control}-cmd-norm"] = 0.0
 
 
-def open_falcons(plane: str, gravity: float):
+def open_falcons(plane: str, gravity: float, ground_effect: bool = True):
     """The CPU plant, with gravity overridden to the value JSBSim uses at the test altitude.
 
     FALCON-S's g is the constant 9.81 from the airframe config, JSBSim's comes from GM and the
@@ -158,7 +159,7 @@ def open_falcons(plane: str, gravity: float):
     """
     from falcons.sim.cpu.aircraft import Aircraft
     with quiet():
-        aircraft = Aircraft(plane, rate_damping=False)
+        aircraft = Aircraft(plane, rate_damping=False, in_ground_effect=ground_effect)
     aircraft.EP["g"] = gravity
     return aircraft
 
@@ -263,11 +264,16 @@ def check_ground_effect(fdm, aero, span: float) -> pd.DataFrame:
     uvw = body_velocity(50.0, alpha, 0.0)
     jsbsim_ic(fdm, 200.0, np.zeros(3), uvw, np.zeros(3))
     CL_jsb, CD_jsb = fdm["aero/coeff/CL"], fdm["aero/coeff/CD"]
+    k = aero.VP["wing"]["induced_drag_k"]
     rows = []
     for h_over_b in [0.05, 0.1, 0.2, 0.3, 0.5, 0.75, 1.0, 1.5, 2.0]:
         state = {"position": np.array([0.0, 0.0, -h_over_b * span])}
         coeffs = aero.get_coefficients_with_ground_effect(alpha, 0.0, np.zeros(3), state)
+        f = coeffs["mu_d"] * coeffs["mu_l"] ** 2
+        # the model's drag ratio: only the induced part k C_L^2 is scaled by f
+        cd_model = 1.0 + k * coeffs["CL_oge"] ** 2 * (f - 1.0) / coeffs["CD_oge"]
         rows.append({"h_over_b": h_over_b, "mu_l": coeffs["mu_l"], "mu_d": coeffs["mu_d"],
+                     "CD_model": cd_model,
                      "CL_ratio": coeffs["CL"] / CL_jsb, "CD_ratio": coeffs["CD"] / CD_jsb,
                      "CL_falcons": coeffs["CL"], "CL_jsbsim": CL_jsb})
     return pd.DataFrame(rows)
@@ -275,7 +281,8 @@ def check_ground_effect(fdm, aero, span: float) -> pd.DataFrame:
 
 def rollout(plane: str, aircraft_dir: Path, altitude: float, euler: np.ndarray,
             uvw: np.ndarray, pqr: np.ndarray, seconds: float, jsb_dt: float,
-            plant_dt: float = None, rotating: bool = False) -> pd.DataFrame:
+            plant_dt: float = None, rotating: bool = False,
+            ground_effect: bool = True) -> pd.DataFrame:
     """Step both simulators from one state and tabulate the difference at every FALCON-S step.
 
     plant_dt overrides the airframe config's step. Worth doing: the CPU plant's error is first
@@ -287,7 +294,7 @@ def rollout(plane: str, aircraft_dir: Path, altitude: float, euler: np.ndarray,
 
     fdm = open_jsbsim(plane, aircraft_dir, min(jsb_dt, plant_dt or jsb_dt), rotating)
     jsbsim_ic(fdm, altitude, euler, uvw, pqr)
-    aircraft = open_falcons(plane, effective_gravity(fdm, rotating))
+    aircraft = open_falcons(plane, effective_gravity(fdm, rotating), ground_effect)
     if plant_dt:
         aircraft.EP["dt"] = plant_dt
     dt = aircraft.get_time_step()
@@ -721,10 +728,10 @@ def main() -> None:
     print("\n4 ground effect against a reference that has none")
     sweep = check_ground_effect(fdm, aero, span)
     sweep.to_csv(args.out / f"{args.plane}_ground_effect.csv", index=False)
-    print("  h/b     mu_l     mu_d    CL ratio  CD ratio")
+    print("  h/b     mu_l     mu_d    CL ratio  CD ratio  CD model")
     for _, row in sweep.iterrows():
         print(f"  {row['h_over_b']:<6.2f} {row['mu_l']:<8.4f} {row['mu_d']:<7.4f} "
-              f"{row['CL_ratio']:<9.4f} {row['CD_ratio']:.4f}")
+              f"{row['CL_ratio']:<9.4f} {row['CD_ratio']:<9.4f} {row['CD_model']:.4f}")
 
     low = args.ige_h_over_b * span
     print(f"\n5 rollout in ground effect, {args.seconds:.0f} s from h = {low:.2f} m "
@@ -907,15 +914,16 @@ def figure_ground_effect(path: Path, sweep: pd.DataFrame, ige: pd.DataFrame,
     """Claim three: ground effect is the one difference that is meant to be there.
 
     Left, the ratio the two simulators are measured to differ by against what FALCON-S's model
-    asks for — mu_l for lift and mu_d * mu_l^2 for drag, since that is how the plant composes
-    them. Right, what it does to a trajectory a fifth of a span off the ground.
+    asks for — mu_l for lift, and for drag 1 + k C_L^2 (mu_d mu_l^2 - 1) / C_D, since the plant
+    scales only the induced part. Right, what it does to a trajectory a fifth of a span off the
+    ground.
     """
     import matplotlib.pyplot as plt
     figure, axes = plt.subplots(1, 2, figsize=(7.0, 2.5))
 
     axes[0].plot(sweep["h_over_b"], sweep["mu_l"], color="tab:blue", label="model: mu_l")
-    axes[0].plot(sweep["h_over_b"], sweep["mu_d"] * sweep["mu_l"]**2, color="tab:red",
-                 label="model: mu_d mu_l$^2$")
+    axes[0].plot(sweep["h_over_b"], sweep["CD_model"], color="tab:red",
+                 label="model: drag ratio")
     axes[0].plot(sweep["h_over_b"], sweep["CL_ratio"], "o", ms=4, mfc="none",
                  color="tab:blue", label="measured: CL ratio")
     axes[0].plot(sweep["h_over_b"], sweep["CD_ratio"], "s", ms=4, mfc="none",
