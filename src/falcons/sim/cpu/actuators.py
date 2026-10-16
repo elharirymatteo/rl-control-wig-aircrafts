@@ -163,6 +163,25 @@ class ODEIntegrator:
         
         return result.y[:, -1]
 
+
+# Dormand-Prince tableau, as in the Warp actuators (falcons/sim/warp/actuators.py)
+DP5_A = ((), (1/5,), (3/40, 9/40), (44/45, -56/15, 32/9),
+         (19372/6561, -25360/2187, 64448/6561, -212/729),
+         (9017/3168, -355/33, 46732/5247, 49/176, -5103/18656))
+DP5_B = (35/384, 0.0, 500/1113, 125/192, -2187/6784, 11/84)
+
+
+def dp5_step(f, x, dt):
+    """One fixed Dormand-Prince step with the 5th-order weights and no error control -- the
+    scheme the Warp plant integrates its actuators with (solver_type 1)."""
+    x = np.asarray(x, dtype=float)
+    k = []
+    for a in DP5_A:
+        xs = x + sum(ai * ki for ai, ki in zip(a, k))
+        k.append(dt * np.asarray(f(xs), dtype=float))
+    return x + sum(b * ki for b, ki in zip(DP5_B, k))
+
+
 class ServoActuator(BaseActuator):
     """Servo actuator with second-order dynamics - equivalent to actuators_custom"""
     
@@ -182,6 +201,15 @@ class ServoActuator(BaseActuator):
     
     def _compute_dynamics(self, commanded_input: float) -> np.ndarray:
         """Compute servo dynamics"""
+        if getattr(self, "warp_parity", False):
+            # Warp's servo exactly: command clipped to [-1, 1], one fixed DP5 step, and the
+            # DEFLECTION STATE saturated at the limits (the rate is left as integrated)
+            u = self.limits.scale_from_normalized(float(np.clip(commanded_input, -1.0, 1.0)))
+            w2, c = self.omega_0 ** 2, 2.0 * self.zeta * self.omega_0
+            x = dp5_step(lambda s: (s[1], -c * s[1] - w2 * s[0] + w2 * u), self.state, self.dt)
+            x[0] = self.limits.clip(x[0])
+            return x
+
         # Scale commanded input to actual deflection
         commanded_deflection = self.limits.scale_from_normalized(commanded_input)
         
@@ -316,6 +344,12 @@ class ThrottleActuator(BaseActuator):
     
     def _compute_dynamics(self, commanded_input: float) -> np.ndarray:
         """Compute first-order throttle dynamics"""
+        if getattr(self, "warp_parity", False):
+            # Warp's throttle exactly: command clipped to [-1, 1], one fixed DP5 step, state
+            # saturated at the throttle limits
+            u = self.limits.scale_from_normalized(float(np.clip(commanded_input, -1.0, 1.0)))
+            x = dp5_step(lambda s: (u - s) / self.T, self.state, self.dt)
+            return np.array([self.limits.clip(x[0])])
         if self.use_rk45_integration:
             return self._compute_dynamics_ode(commanded_input)
         else:
@@ -454,8 +488,9 @@ def get_available_actuator_types() -> list:
 class ActuatorSystem:
     """Complete actuator system for an aircraft"""
     
-    def __init__(self, dt: float):
+    def __init__(self, dt: float, warp_parity: bool = False):
         self.dt = dt
+        self.warp_parity = warp_parity   # integrate as the Warp plant does (fixed DP5, state clipped)
         self.actuator_groups: Dict[str, ActuatorGroup] = {}
         self.all_actuators: List = []
     
@@ -484,6 +519,7 @@ class ActuatorSystem:
             
             # Create actuator using factory
             actuator = create_actuator(actuator_type, self.dt, **actuator_config)
+            actuator.warp_parity = self.warp_parity
             
             actuators.append(actuator)
             self.all_actuators.append(actuator)

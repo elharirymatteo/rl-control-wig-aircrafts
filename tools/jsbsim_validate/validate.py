@@ -151,10 +151,14 @@ def open_falcons(plane: str, gravity: float):
     radius. Left alone the difference is 0.013 m/s^2, which integrates into more than a
     centimetre over a couple of seconds and would sit on top of everything this tool is trying
     to measure.
+
+    Rate damping is switched off: the JSBSim aircraft carries none (gen_jsbsim.py), so leaving it
+    on would measure the damping rather than the plant. Everything else is the default CPU plant,
+    which tests/test_plant_parity.py holds to the Warp plant step for step.
     """
     from falcons.sim.cpu.aircraft import Aircraft
     with quiet():
-        aircraft = Aircraft(plane)
+        aircraft = Aircraft(plane, rate_damping=False)
     aircraft.EP["g"] = gravity
     return aircraft
 

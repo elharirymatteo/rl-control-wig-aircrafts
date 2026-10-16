@@ -143,8 +143,10 @@ Left out on purpose:
 * **Ground effect.** JSBSim is the out-of-ground-effect reference that FALCON-S's ground-effect
   model is measured against. Giving JSBSim a ground-effect model of its own would defeat the
   comparison, so height enters only through FALCON-S — that is what check 4 and check 5 measure.
-* **Rate damping.** `Clp`, `Cmq`, `Cnr` are omitted because the CPU plant does not apply them
-  either. The Warp plant does, so this aircraft is not a reference for that plant.
+* **Rate damping.** `Clp`, `Cmq`, `Cnr` are omitted. Every FALCON-S plant applies them, so the
+  tool flies the CPU plant with them switched off (`Aircraft(rate_damping=False)`) and both sides
+  carry the same model; with that one switch the CPU plant is the one `tests/test_plant_parity.py`
+  holds to the Warp plant.
 * **Actuator and engine dynamics.** Controls are held at zero and the throttle shut throughout.
   Deflection limits are symmetric on every airframe, so a zero command is exactly zero degrees and
   a `-1` throttle command is exactly zero thrust; both stay there for the whole run.
