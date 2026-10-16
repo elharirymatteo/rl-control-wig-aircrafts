@@ -18,8 +18,9 @@ Deliberately left out:
   * ground effect. JSBSim is the out-of-ground-effect reference that FALCON-S's ground-effect
     model is measured against, so giving JSBSim a ground-effect model of its own would defeat
     the comparison.
-  * rate damping (Clp, Cmq, Cnr). The CPU plant does not apply it either. Note that the Warp
-    plant does, so this aircraft is not a reference for that plant.
+  * rate damping (Clp, Cmq, Cnr). The Warp, Torch and CPU plants all apply it; validate.py
+    flies the CPU plant with it switched off (Aircraft(rate_damping=False)) so both sides carry
+    the same model.
   * actuator and engine dynamics. The validation holds every control at zero and the throttle
     shut, and JSBSim's <flight_control> here is a bare command-to-degrees gain.
 """

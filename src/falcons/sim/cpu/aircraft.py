@@ -7,6 +7,7 @@ import pandas as pd
 
 from falcons.sim.cpu.base import AircraftBase
 from falcons.sim.cpu.actuators import ActuatorSystem
+from falcons.sim.cpu.physics.state_propagation import PhysicsIntegrator
 from falcons.sim.cpu.sensors import SensorSystem
 from falcons.sim.cpu.estimators import EstimatorSystem
 from falcons.aircraft.config import AircraftConfig
@@ -16,16 +17,28 @@ class Aircraft(AircraftBase):
     A generic, config-driven aircraft model simulator.
     """
     
-    def __init__(self, aircraft_name: str = None, config_path: str = None, save_history: bool = False):
+    def __init__(self, aircraft_name: str = None, config_path: str = None, save_history: bool = False,
+                 in_ground_effect: bool = True, rate_damping: bool = True, warp_parity: bool = True):
         """
         Initialize aircraft model
         
         Args:
             aircraft_name: Name of aircraft directory (e.g., 'Airship_V7')
             save_history: Whether to save simulation history
+            in_ground_effect: apply the ground-effect correction (the Warp plant's toggle)
+            rate_damping: add the Clp/Cmq/Cnr rotary damping the Warp and Torch plants apply
+            warp_parity: step as the Warp plant does -- fixed-step Dormand-Prince for the rigid
+                body (forces frozen, quaternion renormalised per stage) and the actuators (state
+                saturated), and Warp's propulsion model. tests/test_plant_parity.py holds this
+                plant to Warp to float32 round-off. False restores the scipy solve_ivp RK45
+                integration, output-only actuator clipping and the per-motor-type thrust models.
         """
         if aircraft_name is None and config_path is None:
             raise ValueError("Must provide 'aircraft_name'")
+        # read by the physics mixins, so they are set before the base class builds them
+        self.in_ground_effect = in_ground_effect
+        self.rate_damping = rate_damping
+        self.warp_parity = warp_parity
         
         # Create config manager
         self.config_manager = AircraftConfig(aircraft_name)
@@ -50,6 +63,8 @@ class Aircraft(AircraftBase):
                 raise ValueError(f"Polynomial aerodynamics requires poly_params file: {e}")
         # Initialize base class
         super().__init__(self.config, save_history)    
+        if self.warp_parity:
+            self.integrator = PhysicsIntegrator('dp5')
 
         # Initialize actions
         self.aero_action: np.ndarray = np.zeros(self.get_aero_action_size())
@@ -69,7 +84,7 @@ class Aircraft(AircraftBase):
     
     def create_actuator_system(self) -> ActuatorSystem:
         """Create actuator system from config"""
-        system = ActuatorSystem(self.get_time_step())
+        system = ActuatorSystem(self.get_time_step(), warp_parity=self.warp_parity)
         actuator_config = self.VP['actuator_system']
         
         for group_name, configs in actuator_config.items():
