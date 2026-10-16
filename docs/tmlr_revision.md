@@ -23,7 +23,9 @@ already carries the sideslip-sign fix c6d61f7). The paper is `../falcon-s/main.t
 | JSBSim tool: induced-drag GE, GE switch, paper table | c46fc88 | results/jsbsim/paper_table.csv |
 | Turbulence calibrated from the MIL-F-8785C relation | dc5f1da | old labels were ~3x too low |
 | Figures at TMLR text width (user WIP) | ff5a2ea | base for the readability pass |
-| MPPI vertical-speed term, horizon, termination | rev/mppi | in progress |
+| MPPI climb-rate term, 2 s horizon, termination = env rules, DP5 plant | 5170e5f (rev/mppi) | docs/mppi_tuning.md: 11 configs x 2 airframes x 12 episodes |
+| Runaway guard 2 km -> 20 km in fly()/fly_batch() | 5170e5f | the 2 km box scored a 5 deg constant-bank LQR probe as a departure |
+| Figures redrawn at printed size, 2-D maneuver tracks, throughput + learning curves | rev/figures | in progress |
 
 ## Compute still to run (after the training queue)
 1. `scripts/train_seeds.sh` -> runs/checkpoints (60 + 3 runs; ~40 h on the shared GPU).
@@ -37,8 +39,10 @@ already carries the sideslip-sign fix c6d61f7). The paper is `../falcon-s/main.t
 - Done: claims (high-fidelity, 13.4x, five airframes, tasks, videos), aero + GE equations,
   validity and limitations, integrator, Dryden filter order + MIL citations, parity, JSBSim
   (no GE term, r/RMSE/max), LQR design, appendices (airframes, aero, rewards, training, SAC study).
+- Done since: MPPI description + tuning appendix, LQR design appendix.
 - Pending numbers: altitude / maneuver / GE / robustness tables and text, throughput,
-  wall-clock per run, learning-curve figure, MPPI tuning appendix, LQR envelope, GE 2x2 section.
+  wall-clock per run, learning-curve figure, LQR envelope (results ready: runs/results/lqr_envelope.csv),
+  GE 2x2 section.
 - Pending: figures readability pass; 12-page budget (main text currently ~0.6 page over).
 
 ## Open questions for the authors
