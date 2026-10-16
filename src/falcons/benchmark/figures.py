@@ -25,7 +25,8 @@ from mpl_toolkits.mplot3d.art3d import Line3DCollection
 from falcons.paths import CKPT_DIR, RESULTS_DIR
 
 DT = 0.01
-BANK_LIM = 50.0        # deg; the bank colour scale, shared by attitude_exec and maneuver_render
+TEXT_W = 6.5           # in; TMLR \textwidth, the printed width of the full-width figures
+BANK_LIM = 50.0       # deg; the bank colour scale, shared by attitude_exec and maneuver_render
 # One palette across every figure: the tracking figures name methods, the ground-effect figure names
 # airframes. LQR purple, MPPI red, PPO (CAPS) blue, SAC green, TD3 orange.
 METHOD_COLORS = {"LQR": "#8250c4", "MPPI": "#d1495b", "PPO": "#2a78d6", "SAC": "#008300",
@@ -742,15 +743,15 @@ RATIOS = [0.25, 0.5, 1.0, 2.0, 3.0, 6.0]
 
 
 def ge_energy(results_dir=RESULTS_DIR):
-    """Single-column figure, the two panels stacked. Top: change in thrust from ground effect, for
-    the closed-loop policy (solid), for the open-loop trim of `ground_effect.run_trim` (dash-dot,
-    every airframe at every band because it needs no policy) and for the lifting-line prediction
-    (dotted). All three are thrust ratios, so they sit on one axis; the throttle-squared
+    """Full-width figure, the two panels side by side. Left: change in thrust from ground effect,
+    for the closed-loop policy (solid), for the open-loop trim of `ground_effect.run_trim`
+    (dash-dot, every airframe at every band because it needs no policy) and for the lifting-line
+    prediction (dotted). All three are thrust ratios, so they sit on one axis; the throttle-squared
     control-effort metric stays in the CSV but is not plotted against the prediction, being a
-    different quantity. Bottom: tracking accuracy of the two arms, log-scaled because the three
+    different quantity. Right: tracking accuracy of the two arms, log-scaled because the three
     airframes' errors span two decades. No titles: the caption carries the description.
 
-    Drawn at its final printed width so it is included at \\columnwidth without rescaling; scaling
+    Drawn at its final printed width so it is included at \\textwidth without rescaling; scaling
     a figure rescales every font in it.
     """
     d = Path(results_dir)
@@ -766,8 +767,8 @@ def ge_energy(results_dir=RESULTS_DIR):
                 trim.setdefault(r["aircraft"], []).append(
                     (float(r["h_over_b"]), float(r["delta_thrust_pct"]), float(r["theory_pct"])))
 
-    fig, ax = plt.subplots(2, 1, figsize=(3.5, 4.1), sharex=True, layout="constrained")
-    fig.get_layout_engine().set(h_pad=0.02, hspace=0.03)
+    fig, ax = plt.subplots(1, 2, figsize=(TEXT_W, 2.45), sharex=True, layout="constrained")
+    fig.get_layout_engine().set(w_pad=0.02, wspace=0.06)
     planes = []
     for ac in dict.fromkeys(r["aircraft"] for r in rows):
         c = PLANE_COLORS.get(ac)
@@ -789,26 +790,27 @@ def ge_energy(results_dir=RESULTS_DIR):
     # across this 0.25-6 range, which leaves the reader no way to place the deep-ground-effect end.
     ax[1].set_xticks(RATIOS); ax[1].set_xticklabels([f"{r:g}" for r in RATIOS])
     ax[1].set_xticks([], minor=True)
-    ax[1].set_xlabel("height over span  $h/b$", fontsize=8)
-    ax[0].set_ylabel("thrust change [%]", fontsize=8)
-    ax[1].set_ylabel("settled altitude RMSE [m]", fontsize=8)
+    for a in ax:
+        a.set_xlabel("height over span  $h/b$", fontsize=9)
+    ax[0].set_ylabel("thrust change [%]", fontsize=9)
+    ax[1].set_ylabel("settled altitude RMSE [m]", fontsize=9)
     ax[1].set_ylim(top=ax[1].get_ylim()[1] * 3.2)      # headroom for the airframe key
-    # Two keys, one per panel: the upper names the three measurements, the lower the airframes,
+    # Two keys, one per panel: the left names the three measurements, the right the airframes,
     # so neither panel carries a legend for something it does not draw.
     ax[0].legend(handles=[Line2D([], [], color="0.25", lw=1.4, marker="o", ms=3, label="policy"),
                           Line2D([], [], color="0.25", lw=1.2, ls="-.", label="open-loop trim"),
                           Line2D([], [], color="0.25", lw=1.0, ls=":", label="lifting-line")],
-                 fontsize=6.5, frameon=False, loc="lower right", handlelength=1.8,
+                 fontsize=7.5, frameon=False, loc="lower right", handlelength=2.0,
                  borderpad=0.1, labelspacing=0.25)
     ax[1].legend(handles=[Line2D([], [], color=c, lw=1.4,
                                  label=f"{a.replace('_', ' ')} ($b$={b:.2f} m)")
                           for a, c, b in planes]
                  + [Line2D([], [], color="0.25", lw=1.0, ls="--", alpha=0.6, label="GE off")],
-                 fontsize=6.5, frameon=False, loc="upper left", handlelength=1.8,
+                 fontsize=7.5, frameon=False, loc="upper left", handlelength=2.0,
                  borderpad=0.1, labelspacing=0.25)
     for a in ax:
         a.grid(alpha=0.25, lw=0.5)
-        a.tick_params(labelsize=7)
+        a.tick_params(labelsize=8)
         for sp in ("top", "right"):
             a.spines[sp].set_visible(False)
     out = _figdir(results_dir) / "fig_ge_energy.pdf"
@@ -826,7 +828,7 @@ FAM = {"obs_noise": ("sensor noise", "#2a78d6"), "sensor_delay": ("sensor delay"
 
 
 def robustness_ppo(results_dir=RESULTS_DIR):
-    """Single-column robustness figure: PPO only, both airframes, one line per disturbance family
+    """Full-width robustness figure: PPO only, both airframes, one line per disturbance family
     against severity. `benchmark.robustness` writes the full sweep; this figure needs the compact
     version, with the families as lines so that the ordering between them is the thing the reader
     sees. Reads the stored CSV, so it never re-flies anything."""
@@ -834,7 +836,7 @@ def robustness_ppo(results_dir=RESULTS_DIR):
         rs = [r for r in csv.DictReader(f) if r["method"] == "PPO"]
     idx = {(r["aircraft"], r["disturbance"], r["severity"]): r for r in rs}
 
-    fig, ax = plt.subplots(1, 2, figsize=(3.45, 1.95), sharey=True)
+    fig, ax = plt.subplots(1, 2, figsize=(TEXT_W, 2.45), sharey=True)
     for a, ac in zip(ax, PRETTY):
         nom = idx[(ac, "nominal", "-")]
         for fam, (lab, c) in FAM.items():
@@ -844,7 +846,7 @@ def robustness_ppo(results_dir=RESULTS_DIR):
                 if r is None or not r["phi_rmse"]:
                     continue                      # departed: no tracking metric to plot
                 xs.append(i); ys.append(float(r["phi_rmse"]))
-            a.plot(xs, ys, "o-", color=c, lw=1.3, ms=3, label=lab)
+            a.plot(xs, ys, "o-", color=c, lw=1.4, ms=3.5, label=lab)
         # Survival is the second axis of the result and leaves 1.00 in only two cells. Rather than
         # spend a panel on it, flag those cells along the top of the plot; a line that simply stops
         # (Ranger turbulence) is a cell where every maneuver departed and there is no RMSE to draw.
@@ -854,16 +856,19 @@ def robustness_ppo(results_dir=RESULTS_DIR):
                 if r and float(r["survival"]) < 1.0:
                     a.text(i, 0.97, f"s={float(r['survival']):.2f}",
                            transform=a.get_xaxis_transform(),
-                           ha="center", va="top", fontsize=5.5, color=c)
-        a.set_title(PRETTY[ac], fontsize=7.5, pad=3)
-        a.set_xticks(range(4)); a.set_xticklabels(X, fontsize=6.5)
-        a.tick_params(axis="y", labelsize=6.5)
+                           ha="center", va="top", fontsize=7, color=c)
+        a.set_title(PRETTY[ac], fontsize=9, pad=3)
+        a.set_xticks(range(4)); a.set_xticklabels(X, fontsize=8)
+        a.set_xlabel("severity", fontsize=9)
+        a.tick_params(axis="y", labelsize=8)
         a.grid(alpha=0.25, lw=0.5)
         for sp in ("top", "right"):
             a.spines[sp].set_visible(False)
-    ax[0].set_ylabel("bank RMSE [deg]", fontsize=7)
-    ax[0].legend(fontsize=5.8, frameon=False, loc="lower right", handlelength=1.4,
-                 borderpad=0.1, labelspacing=0.25)
+    ax[0].set_ylabel("bank RMSE [deg]", fontsize=9)
+    # The Ranger panel's upper left is empty at every severity; in the Airship panel any corner
+    # crosses a line.
+    ax[1].legend(fontsize=8, frameon=False, loc="upper left", handlelength=2.0,
+                 borderpad=0.1, labelspacing=0.3)
     fig.tight_layout(pad=0.4)
     out = _figdir(results_dir) / "fig_robustness_ppo.pdf"
     fig.savefig(out)
