@@ -34,6 +34,14 @@ def maneuver_stream(name, phi_max_full, hdot_max_full, base_vel):
         r_up = np.clip((t - 2.0) / 3.0, 0.0, 1.0)
         r_dn = np.clip((climb_dur + 3.0 - t) / 3.0, 0.0, 1.0)
         hdot = min(1.0, C) * np.minimum(r_up, r_dn)
+    elif name.startswith("bank"):
+        # constant-bank turn at `bank<deg>` (e.g. "bank30"), the probe of the LQR's bank envelope:
+        # held for 1.3 turn periods, capped at 120 s so shallow banks stay affordable
+        bank = np.radians(float(name[4:]))
+        Tb = 2.0 * np.pi * V / (9.81 * np.tan(bank))
+        t = np.arange(int(min(1.3 * Tb, 120.0) / DT)) * DT
+        phi = bank * np.tanh(t / 2.0)
+        hdot = np.zeros_like(t)
     elif name == "sturn":
         T = 3.2 * Tturn
         t = np.arange(int(T / DT)) * DT

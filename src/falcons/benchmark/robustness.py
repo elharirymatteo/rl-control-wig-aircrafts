@@ -128,24 +128,19 @@ def noise_seed(aircraft, sev, family="obs_noise", policy_seed=0, maneuver=""):
 PI4 = np.pi / 4.0
 
 
-def calibrate_turb(aircraft, n=32, steps=700, seed=0):
-    """Realized sigma_u is linear in W20 (Dryden filter). Measure the constant k = sigma_u/W20
-    once per airframe so we can set W20 = Iu*Va / k to hit a target intensity. Averaged over n
-    seeded gust streams, so the calibration is reproducible and not one realization's luck."""
-    e = make_env(aircraft, steps, turbulence="light", n=n)
-    e.reset()
-    tm = e.model.wind_model.turbulence_model
-    tm.seed(seed)
-    W20 = 20.0
-    e.set_turb_W20(W20)
-    us = []
-    a = torch.zeros(n, 4, device="cuda")
-    for t in range(steps):
-        e.step(a)
-        lin, _ = tm.get_gusts_numpy()
-        us.append(lin[:, 0].copy())
-    sig_u = float(np.mean(np.std(np.array(us)[150:], axis=0)))
-    return sig_u / W20, float(e.base_vel)
+def calibrate_turb(aircraft):
+    """k = sigma_u / W20 from the MIL-F-8785C low-altitude intensity relation the Dryden filter
+    itself uses (falcons/sim/warp/dryden.py): sigma_w = 0.1 W20 and
+    sigma_u = sigma_w / (0.177 + 0.000823 h_ft)^0.4, evaluated at the maneuvers' spawn altitude.
+    W20 = Iu * Va / k then sets the SPECIFICATION intensity sigma_u / Va = Iu.
+
+    An earlier version measured k as the standard deviation of a 5.5 s gust record. At 60 m the
+    longitudinal correlation time L_u / Va is about 8 s, so a record that short (started from a
+    zero filter state) under-reads sigma_u by about 3x, and every "Iu" it set was in fact about
+    three times larger than its label."""
+    e = make_env(aircraft, 10)
+    h_ft = float(e.spawn_alt) / 0.3048
+    return 0.1 / (0.177 + 0.000823 * h_ft) ** 0.4, float(e.base_vel)
 
 
 METHOD = "PPO"      # the one executor; the name the table prints

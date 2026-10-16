@@ -78,29 +78,31 @@ reproduction gate bounds this family (`loose_abs_by["obs_noise"]` in
 
 ## 4. Wind — Dryden turbulence
 
-A full 6-component Dryden gust field (3 linear + 3 angular), the MIL-F-8785C / MIL-HDBK-1797
-low-altitude turbulence model already in the sim's `wind_model.turbulence_model`. Severity is set
+The MIL-F-8785C / MIL-HDBK-1797 low-altitude Dryden model already in the sim's
+`wind_model.turbulence_model`. The filters generate six components (3 linear + 3 angular), but only
+the three linear gusts enter the dynamics; the angular gusts are computed and not applied. Severity is set
 by a **target longitudinal turbulence intensity** `Iu = σ_u / Va` rather than a raw wind speed, so
 the disturbance is a consistent fraction of each airframe's trim airspeed.
 
-| severity | Iu = σ_u / Va |
-|----------|---------------|
-| mild     | 0.05 |
-| medium   | 0.10 |
-| severe   | 0.15 |
+| severity | Iu = σ_u / **Calibration (`calibrate_turb`).** The Dryden intensity is linear in the wind-at-20-ft parameter
+W20: sigma_w = 0.1 W20 and sigma_u = sigma_w / (0.177 + 0.000823 h_ft)^0.4. `calibrate_turb`
+evaluates `k = sigma_u / W20` from that relation at the maneuvers' spawn altitude (60 m, k = 0.154)
+and sets `W20 = Iu * Va / k`, so `Iu` is the specification intensity. On the Airship V7 the grid is
+W20 = 9.1 / 18.2 / 27.3 m/s, on the Volantex Ranger 4.9 / 9.7 / 14.6 m/s.
 
-**Calibration (`calibrate_turb`).** The Dryden filter output σ_u is linear in the wind-at-20-ft
-parameter W20, so we measure the constant `k = σ_u / W20` once per airframe (700-step rollout,
-statistics after the 150-step filter warm-up), then set `W20 = Iu · Va / k` to hit the target
-intensity exactly. This makes the sweep airframe-independent in intensity terms.
+**Correction (TMLR revision).** Earlier versions MEASURED k as the standard deviation of a 5.5 s gust
+record started from a zero filter state. At 60 m the longitudinal correlation time L_u / Va is about
+8 s, so that record under-read sigma_u by about 3x (k = 0.040-0.045 instead of 0.154), and the
+labels Iu = 0.05 / 0.10 / 0.15 of every earlier robustness table were in fact specification
+intensities of about 0.17 / 0.34 / 0.51. The reasoning below about which band is survivable was
+made on those miscalibrated runs and is superseded by the re-run.
 
-**Why not literal MIL wind speeds.** MIL "light/moderate/severe" map to W20 ≈ 15/30/45 kt
-(7.7 / 15.4 / 23.1 m/s). For the 15–28 m/s airframe class those σ_u values approach or exceed the
-airspeed itself — every controller departs the envelope and the sweep loses all resolution. The
-first grid (Iu = 0.10 / 0.20 / 0.30) already crashed every method at medium+. Iu ≤ 0.15 is the
-**survivable band where the executors actually separate**, and 0.05–0.15 still spans light →
-moderate low-altitude turbulence for this class. This is a resolution choice, stated honestly, not
-a claim that these airframes are immune to MIL-severe wind (they are not — see the wind survival
+**MIL presets for reference.** MIL "light/moderate/severe" map to W20 = 15/30/45 kt
+(7.7 / 15.4 / 23.1 m/s), i.e. Iu = 0.04 / 0.08 / 0.13 on the V7 and 0.08 / 0.16 / 0.24 on the
+Ranger at 60 m: the grid above spans light to beyond-severe on the V7 and light to moderate on the
+Ranger, in airframe-relative intensity.
+
+(they are not — see the wind survival
 column, which collapses to 0 on Volantex at Iu = 0.15).
 
 ---
