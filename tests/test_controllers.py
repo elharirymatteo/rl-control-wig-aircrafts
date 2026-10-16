@@ -13,7 +13,9 @@ CELLS = [(a, t, p, s) for a in ALGOS for t in TASKS for p in ("Airship_V7", "Vol
 CELLS += [("ppo", "altitude", p, 0) for p in ("Airship_A0S", "Navion", "Cirrus_SR22")]
 
 
-def test_lqr_gains_identical_to_archive():
+def test_lqr_gains_identical_to_golden():
+    """The hold gains are the ones scripts/derive_lqr_gains.py writes (tests/test_lqr_gains.py
+    re-derives them); this pins the shipped files to the golden copies without the slow solve."""
     for ac in ("Airship_V7", "Volantex_Ranger", "Navion", "Cirrus_SR22"):
         new = np.loadtxt(AircraftConfig(ac).lqr_gains_path, delimiter=",")
         old = np.loadtxt(GOLD / f"{ac}_K_LQR.csv", delimiter=",")
