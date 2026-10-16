@@ -49,13 +49,19 @@ class MPPIAltitudeControl(Aircraft):
     def extract_MPPI_specs(self, MPPI_specs):
         self.number_of_sampled_trajectories = MPPI_specs["number_of_sampled_trajectories"]
         self.number_of_iterations_per_sample = MPPI_specs["number_of_iterations_per_sample"]
+        # Standard deviations of the sampling noise on the NORMALIZED command in [-1, 1]. The keys
+        # were historically named noise_variance_*, but the values were always used as a std.
         self.noise = {
-            "elevator": MPPI_specs["noise_variance_elevator"],           
-            "aileron": MPPI_specs["noise_variance_aileron"],           
-            "rudder": MPPI_specs["noise_variance_rudder"],               
-            "throttle": MPPI_specs["noise_variance_throttle_both"]
+            "elevator": MPPI_specs["noise_std_elevator"],
+            "aileron": MPPI_specs["noise_std_aileron"],
+            "rudder": MPPI_specs["noise_std_rudder"],
+            "throttle": MPPI_specs["noise_std_throttle"]
         }
         self.temperature = MPPI_specs["temperature"]
+        self.control_cost_gamma = MPPI_specs["control_cost_gamma"]
+        # weight of |climb - reference climb rate| in the altitude cost (unused by the attitude
+        # executor, whose cost tracks the stream's own climb-rate command)
+        self.vertical_speed_weight = MPPI_specs.get("vertical_speed_weight", 0.0)
 
     def build_MPPI_sequences_buffers(self):
         self.optimal_sequence = {}
@@ -136,7 +142,8 @@ class MPPIAltitudeControl(Aircraft):
                     noise_std_dev,
                     noisy_action,
                     self.bias_cost_term,
-                    self.temperature
+                    self.temperature,
+                    self.control_cost_gamma,
                 ],
                 device=self._device
             )
@@ -252,7 +259,8 @@ class MPPIAltitudeControl(Aircraft):
                 self.costs,
                 self.simulation_time,    
                 self.dt,                   
-                self.trajectory_type_id  
+                self.trajectory_type_id,
+                float(self.vertical_speed_weight),
             ],
             device=self._device
         )

@@ -114,9 +114,11 @@ def fly(plane, maneuver, controller_factory, turbulence=None, turb_W20=None):
     the classical executors (falcons/controllers/{lqr,mppi}/attitude.py) read the plant state of
     that env directly, so they cannot be built before it.
 
-    Survival = completed the whole maneuver inside the flight envelope (Va in [0.55,1.8]*base_vel,
-    finite, position bounded, no env stall/bank termination). Tracking metrics are computed over
-    t >= settle, and only for a surviving run.
+    Survival = completed the whole maneuver without the environment terminating it (ground
+    contact, |alpha| > 1.5 x stall, Va < 0.6 x base_vel, |bank| > 70 deg, NaN state -- the same
+    rules the RL executors were trained under) and inside the harness envelope (Va <= 1.8 x
+    base_vel, position bounded). Every executor is scored by these same rules. Tracking metrics
+    are computed over t >= settle, and only for a surviving run.
 
     turbulence: enable a Dryden gust field ("light"/"moderate"/"severe" seeds the base W20);
     turb_W20 then overrides the wind speed at 20 ft (m/s) so the caller can hit a target gust
@@ -157,7 +159,9 @@ def fly(plane, maneuver, controller_factory, turbulence=None, turb_W20=None):
         climb = -vw[2]
         Va = float(np.linalg.norm(vb))
 
-        if (not np.isfinite(p).all() or np.abs(p).max() > 2000.0
+        # runaway guard, not an envelope: a 120 s constant-bank probe at 5 deg (turn radius ~0.9 km on
+        # the V7) legitimately leaves a 2 km box, which the old bound scored as a departure
+        if (not np.isfinite(p).all() or np.abs(p).max() > 20000.0
                 or Va < 0.55 * base or Va > 1.8 * base):
             survived = False
             break
@@ -166,9 +170,11 @@ def fly(plane, maneuver, controller_factory, turbulence=None, turb_W20=None):
         tr["hdot_cmd"].append(hdot_s[t]); tr["Va"].append(Va); tr["va_cmd"].append(va_s[t])
         tr["pos"].append(p.copy()); tr["yaw"].append(yaw)
         _, _, done, info = e.step(act)   # advance the real dynamics
-        # the env terminates on stall, bank limit, ground contact or a non-finite state and then
-        # RESETS that env in place; scoring on past that point would score the respawned aircraft
         if bool(done[0]) and not bool(info["truncated"][0]):
+            # The env terminated the flight (stall, bank limit, ground contact, non-finite state)
+            # and has ALREADY auto-reset the aircraft to its spawn state; carrying on would score
+            # the respawned aircraft, so a departure by alpha or bank went uncounted unless the
+            # airspeed also left the envelope.
             survived = False
             break
 
@@ -237,7 +243,7 @@ def fly_batch(plane, maneuver, controller_factory, n, turbulence=None, turb_W20=
         tt = 2.0 * np.cross(q[:, :3], vb)
         vw = vb + qw[:, None] * tt + np.cross(q[:, :3], tt)
         va = np.linalg.norm(vb, axis=1)
-        out = (~np.isfinite(p).all(axis=1) | (np.abs(p).max(axis=1) > 2000.0)
+        out = (~np.isfinite(p).all(axis=1) | (np.abs(p).max(axis=1) > 20000.0)   # runaway guard, as in fly()
                | (va < 0.55 * base) | (va > 1.8 * base))
         newly = alive & out
         t_fail[newly] = t * DT; alive &= ~out

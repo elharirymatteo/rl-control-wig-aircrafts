@@ -16,11 +16,12 @@ from falcons.controllers.mppi.kernels import _evaluate_trajectories_attitude
 MPPI_SPECS = {
     "number_of_sampled_trajectories": 1000,
     "number_of_iterations_per_sample": 100,
-    "noise_variance_elevator": 0.10,
-    "noise_variance_aileron": 0.08,
-    "noise_variance_rudder": 0.08,
-    "noise_variance_throttle_both": 0.10,
+    "noise_std_elevator": 0.10,          # std of the noise on the normalized command
+    "noise_std_aileron": 0.08,
+    "noise_std_rudder": 0.08,
+    "noise_std_throttle": 0.10,
     "temperature": 3.0,
+    "control_cost_gamma": 0.03,          # see kernels._sample_inputs_sequences
 }
 
 

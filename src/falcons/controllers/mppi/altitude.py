@@ -3,21 +3,35 @@
 falcons.benchmark.altitude runs this in a child process and bakes the reference constants
 (TRAJ_CONST_ALT, TRAJ_ACQ_H0, TRAJ_REF_VA) into that child's environment before importing this
 module: falcons.controllers.mppi.reference freezes them into warp constants at import time.
+
+The planner settings below were chosen by the sweep recorded in docs/mppi_tuning.md.
 """
 import numpy as np
+import warp as wp
 
 from falcons.aircraft.params import load_params
 from falcons.controllers.lqr.reference import compute_reference as compute_reference_np
 from falcons.controllers.mppi.control import MPPIAltitudeControl
 from falcons.controllers.mppi.reference import compute_reference
 from falcons.sim.warp.aircraft import Aircraft
+from falcons.sim.warp.termination import check_termination_batch
+
+SAMPLES = 1000                 # sampled control sequences per step
+HORIZON = 200                  # preview length in steps of dt = 0.01 s (2 s)
+VERTICAL_SPEED_WEIGHT = 1.0    # weight of |climb - reference climb rate| (docs/mppi_tuning.md)
+TEMPERATURE = 3.0              # softmax temperature lambda
+CONTROL_COST_GAMMA = 0.03      # information-theoretic control cost, ~ the historical magnitude
+NOISE_STD = dict(elevator=0.10, aileron=0.08, rudder=0.08, throttle=0.10)   # normalized commands
 
 
 class MPPIAltitude:
     """Adapter for running MPPI control scenarios."""
 
     def __init__(self, aircraft_name: str = "Airship_V7", init_altitude: float = None,
-                 mppi_seed: int = 0, samples: int = 1000, horizon: int = 100):
+                 mppi_seed: int = 0, samples: int = SAMPLES, horizon: int = HORIZON,
+                 vertical_speed_weight: float = VERTICAL_SPEED_WEIGHT,
+                 temperature: float = TEMPERATURE, control_cost_gamma: float = CONTROL_COST_GAMMA,
+                 max_steps: int = 10000):
         self.aircraft_name = aircraft_name
         # Height (m) to spawn at. None = spawn ON the reference at t=0, which is what makes the
         # comparison against the other controllers fair: the previous hardcoded 1 m spawn put the
@@ -27,6 +41,10 @@ class MPPIAltitude:
         self.mppi_seed = mppi_seed
         self.samples = samples
         self.horizon = horizon
+        self.vertical_speed_weight = vertical_speed_weight
+        self.temperature = temperature
+        self.control_cost_gamma = control_cost_gamma
+        self.max_steps = int(max_steps)     # the benchmark scores 6000 steps; fly no more than that
 
     def run(self, scenario: dict) -> dict:
         """
@@ -64,21 +82,37 @@ class MPPIAltitude:
         
         config = {'AP': AP, 'VP': VP, 'CL': CL, 'EP': EP}
         
-        # Initialize the real simulated aircraft
+        # Initialize the real simulated aircraft. Integrated exactly like the RL environments
+        # (envs/altitude.py, envs/attitude.py): fixed-step Dormand-Prince stages with the forces
+        # frozen over the step (solver_type 1). The Aircraft default is explicit Euler.
         aircraft = Aircraft(1, "cuda", config, save_history=False)
-        
+        aircraft.solver_type = 1
+
+        # Termination identical to the RL environments' check_termination_batch: ground contact
+        # of the wing, |alpha| > 1.5 x stall angle, or airspeed below 0.6 x the airframe's
+        # default airspeed (base_vel). The historical check stopped only at 4 x stall (2 x in the
+        # kernel times 2 x at the call) and had no airspeed floor.
+        base_vel = float(config_objects["default_initial_state"].linear_vel[0])
+        alpha_limit = float(1.5 * VP.stall_angle)            # stall_angle is in radians
+        va_min = 0.6 * base_vel
+        wing_cg_z = float(VP.WP.cg_offset_vector[2])
+        term = wp.zeros(1, dtype=wp.int32, device="cuda")
+        reason = wp.zeros(1, dtype=wp.int32, device="cuda")
+
         # MPPI specs. The preview horizon (iterations x dt) is the planner's main tuning knob on
         # the acquisition task: a 1 s preview cannot see far enough ahead to arrest a commanded
-        # descent, so it dives to catch the reference ramp and overshoots. Sweep it with the
-        # `horizon` constructor argument.
+        # descent, so it dives to catch the reference ramp and overshoots. The vertical-speed term
+        # tracks the reference's own climb rate; see docs/mppi_tuning.md for the sweep.
         mppi_specs = {
             "number_of_sampled_trajectories": int(self.samples),
             "number_of_iterations_per_sample": int(self.horizon),
-            "noise_variance_elevator": 0.10,
-            "noise_variance_aileron": 0.08,
-            "noise_variance_rudder": 0.08,
-            "noise_variance_throttle_both": 0.10,
-            "temperature": 3.0
+            "noise_std_elevator": NOISE_STD["elevator"],
+            "noise_std_aileron": NOISE_STD["aileron"],
+            "noise_std_rudder": NOISE_STD["rudder"],
+            "noise_std_throttle": NOISE_STD["throttle"],
+            "temperature": float(self.temperature),
+            "control_cost_gamma": float(self.control_cost_gamma),
+            "vertical_speed_weight": float(self.vertical_speed_weight),
         }
         
         # Define trajectory targets
@@ -137,7 +171,7 @@ class MPPIAltitude:
         MPPI_controller.reset(init_state, init_action)
         
         # Pre-allocate arrays
-        max_steps = 10000
+        max_steps = self.max_steps
         times = np.zeros(max_steps)
         positions = np.zeros((max_steps, 3))
         references = np.zeros((max_steps, 3))
@@ -201,15 +235,14 @@ class MPPIAltitude:
                 "rudder_dot": aircraft._actuator_states['rudder_dot'].numpy()[0]
             }
             
-            # Check termination conditions using GPU-accelerated check
-            crashed, stalled = aircraft.check_termination(VP.WP.cg_offset_vector[2], 2*VP.stall_angle)
-            
-            if crashed:
-                print(f"Simulation ended at step {step}: Crashed into water")
-                actual_steps = step + 1
-                break
-            if stalled:
-                print(f"Simulation ended at step {step}: Stall angle exceeded")
+            # Check termination with the RL environments' own kernel and thresholds
+            wp.launch(check_termination_batch, dim=1, inputs=[
+                aircraft._state["position"], aircraft._alpha, aircraft._Va,
+                wing_cg_z, alpha_limit, va_min, term, reason], device="cuda")
+            r = int(reason.numpy()[0])
+            if r:
+                print(f"Simulation ended at step {step}: "
+                      f"{'crashed into the surface' if r == 1 else 'stall (alpha or airspeed)'}")
                 actual_steps = step + 1
                 break
             

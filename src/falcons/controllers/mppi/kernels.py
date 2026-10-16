@@ -20,7 +20,7 @@ from falcons.sim.warp.aerodynamics import (
 from falcons.controllers.mppi.cost import *
 
 from falcons.sim.warp.actuators import process_actuator_complete
-from falcons.controllers.mppi.reference import compute_reference
+from falcons.controllers.mppi.reference import compute_reference, compute_reference_climb_rate
 
 @wp.kernel
 def _sample_inputs_sequences(number_of_iterations:wp.int32,
@@ -30,22 +30,27 @@ def _sample_inputs_sequences(number_of_iterations:wp.int32,
                              noisy_action: wp.array(dtype=wp.float32), 
                              bias_cost_term:wp.array(dtype=wp.float32),
                              temperature:wp.float32,
+                             control_cost_gamma:wp.float32,
 ):
+    """Sample u + eps, eps ~ N(0, sigma^2) on the normalized command, clamped to [-1, 1], and
+    accumulate the information-theoretic control cost lambda * gamma * u * eps / sigma^2 of each
+    rollout (Williams et al., 2017). `noise_std_dev` is the standard deviation sigma.
+
+    The historical term was lambda * (u + eps) * u / sqrt(sigma): it treated the std as a variance
+    and used the sample instead of its perturbation. The u^2 part is common to every rollout and
+    cancels in the softmax, so that term equals lambda * gamma * u * eps / sigma^2 with
+    gamma = sigma^1.5 -- 0.032 at sigma = 0.10 and 0.023 at sigma = 0.08."""
     tid = wp.tid() 
     state = wp.rand_init(seed, tid)
 
-    noisy_action[tid] = wp.clamp(
-            previous_action[tid % number_of_iterations] + noise_std_dev * wp.randn(state),
-            -1.0,
-            1.0
-        )
-    
+    u = previous_action[tid % number_of_iterations]
+    noisy_action[tid] = wp.clamp(u + noise_std_dev * wp.randn(state), -1.0, 1.0)
+
+    bias_cost = float(0.0)
     if noise_std_dev != 0.0:
-        # bias_cost = temperature/2.0 * ((2.0*noisy_action[tid] - previous_action[tid]) * 1.0/noise_std_dev * previous_action[tid])
-        bias_cost = temperature * (noisy_action[tid] * 1.0/wp.sqrt(noise_std_dev) * previous_action[tid % number_of_iterations])
-    else:
-        bias_cost = 0.0
-    
+        eps = noisy_action[tid] - u                    # the perturbation actually applied
+        bias_cost = temperature * control_cost_gamma * u * eps / (noise_std_dev * noise_std_dev)
+
     wp.atomic_add(bias_cost_term, tid // number_of_iterations, bias_cost)
 
 
@@ -273,7 +278,8 @@ def _evaluate_trajectories(
     costs: wp.array(dtype=wp.float32),
     simulation_time: wp.float32,   
     dt: wp.float32,                
-    trajectory_type: wp.int32
+    trajectory_type: wp.int32,
+    vertical_speed_weight: wp.float32,
 ):
     tid = wp.tid()
 
@@ -282,6 +288,7 @@ def _evaluate_trajectories(
     
     # Get reference values from GPU computation
     ref_values = compute_reference(current_time, trajectory_type)
+    hdot_ref = compute_reference_climb_rate(current_time, dt, trajectory_type)
     ref_pos_y = ref_values[0]
     ref_pos_z = ref_values[1]
     ref_velocity = ref_values[2]
@@ -303,7 +310,7 @@ def _evaluate_trajectories(
     high_altitude_cost = excessive_altitude_cost(pos, vel, ang_vel, ori)
     alpha_cost = alpha_tracking_cost(pos, vel, ang_vel, ori, alpha)
     beta_cost = beta_tracking_cost(pos, vel, ang_vel, ori, beta)
-    vz_cost = sink_rate_cost(vel, ori)
+    vz_cost = climb_rate_tracking_cost(vel, ori, hdot_ref)
     
     # Weighted total cost
     total_cost = (4.0 * altitude_cost +      # Track z
@@ -314,7 +321,7 @@ def _evaluate_trajectories(
                   0.0 * high_altitude_cost + # Don't go too high
                   1.0 * alpha_cost +      # Penalize alpha if too high
                   0.05 * beta_cost +       # Penalize beta
-                  W_VZ * vz_cost)          # Damp slow altitude divergence (0 = historical)
+                  vertical_speed_weight * vz_cost)   # Track the reference's climb rate
 
     # A sampled rollout that blows up numerically yields inf/NaN here, and a single NaN poisons
     # the min-cost reduction -> every weight NaN -> uniform weights -> the "plan" is the mean of
