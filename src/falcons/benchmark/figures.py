@@ -39,9 +39,9 @@ HALF_W = 3.2           # in; a half-width figure (two side by side, or wrapped i
 PNG_DPI = 200          # the quick-look PNG written next to every PDF
 BANK_LIM = 50.0       # deg; the bank colour scale, shared by attitude_exec and maneuver_render
 # The printed style. Sizes are in points at the printed size, which is the canvas size.
-RC = {"font.size": 8, "axes.labelsize": 8, "axes.titlesize": 8, "xtick.labelsize": 7,
-      "ytick.labelsize": 7, "legend.fontsize": 7, "figure.titlesize": 8,
-      "figure.labelsize": 8, "axes.linewidth": 0.6, "lines.linewidth": 1.0,
+RC = {"font.size": 9, "axes.labelsize": 9, "axes.titlesize": 9, "xtick.labelsize": 8,
+      "ytick.labelsize": 8, "legend.fontsize": 8, "figure.titlesize": 9,
+      "figure.labelsize": 9, "axes.linewidth": 0.7, "lines.linewidth": 1.2,
       "xtick.major.width": 0.6, "ytick.major.width": 0.6, "xtick.minor.width": 0.5,
       "ytick.minor.width": 0.5, "xtick.major.size": 2.5, "ytick.major.size": 2.5,
       "xtick.minor.size": 1.5, "ytick.minor.size": 1.5, "xtick.major.pad": 2,
@@ -80,11 +80,30 @@ def _paper(fn):
     return wrapped
 
 
+def _rasterize_dense(fig, max_points=300):
+    """Keep the PDF light enough for Overleaf: data artists with many vertices (long traces, fill
+    bands, line collections, dense scatters) are rasterized at savefig.dpi (300) inside the PDF,
+    while text, axes, ticks, legends and sparse markers stay vector, so the type stays sharp."""
+    from matplotlib.collections import Collection
+    for ax in fig.axes:
+        for ln in ax.lines:
+            if len(ln.get_xdata()) > max_points:
+                ln.set_rasterized(True)
+        for c in ax.collections:
+            if not isinstance(c, Collection):
+                continue
+            n = len(c.get_paths()) + (len(c.get_offsets()) if c.get_offsets() is not None else 0)
+            big = n > max_points or any(len(p.vertices) > max_points for p in c.get_paths())
+            if big:
+                c.set_rasterized(True)
+
+
 def _save(fig, results_dir, name):
     """<name>.pdf at the canvas size (never bbox_inches="tight": that would change the printed
     size), plus <name>.png for a quick look. A constrained layout solves at draw time against
     text extents that depend on the dpi, so it is settled at the output dpi first."""
     out = _figdir(results_dir) / f"{name}.pdf"
+    _rasterize_dense(fig)
     fig.set_dpi(300)
     fig.canvas.draw()
     fig.savefig(out)
@@ -314,7 +333,7 @@ def altitude_viz(algo, planes=PLANES, ckpt_dir=CKPT_DIR, results_dir=RESULTS_DIR
         Line2D([], [], color=col, lw=1.1, label=f"median |error| ({N} episodes)"),
         Patch(color=col, alpha=0.22, lw=0, label="10–90 %"),
         Line2D([], [], color="0.15", lw=1.0, ls=":", label=f"±{BAND:g} m capture band")],
-        loc="outside upper center", ncol=6, handlelength=1.6, columnspacing=1.0)
+        loc="outside upper center", ncol=3, handlelength=1.6, columnspacing=1.0)
     name = f"fig_altitude_viz_{algo}" if n > 1 else f"fig_altitude_viz_{algo}_{planes[0]}"
     return _save(fig, results_dir, name)
 
@@ -464,7 +483,7 @@ def _channels(ax, traj, dt):
         ax.plot(t, base + 0.5 * (c - ref) / span, color=col, lw=0.9, ls="--", alpha=0.75)
         lo, hi = float(c[len(c) // 4]), float(c[-1])
         ax.text(0.0, base + 0.62, f"{lab}: {lo:.0f}$\\rightarrow${hi:.0f} {unit}",
-                color=col, fontsize=7, ha="left", va="bottom")
+                color=col, fontsize=8, ha="left", va="bottom")
     ax.set_xlabel("time [s]")
     ax.set_yticks([]); ax.set_ylim(-0.9, 5.7)
     ax.grid(True, axis="x")
@@ -478,9 +497,9 @@ def _colour_key(fig, ax):
     cb = fig.colorbar(plt.cm.ScalarMappable(cmap="coolwarm",
                                             norm=plt.Normalize(-BANK_LIM, BANK_LIM)),
                       cax=cax, orientation="horizontal", ticks=[-BANK_LIM, 0, BANK_LIM])
-    cb.set_label("bank [deg]", fontsize=7, labelpad=1)
+    cb.set_label("bank [deg]", fontsize=8, labelpad=1)
     cb.ax.xaxis.set_label_position("top")
-    cb.ax.tick_params(labelsize=7, pad=1, length=2)
+    cb.ax.tick_params(labelsize=8, pad=1, length=2)
     cb.outline.set_linewidth(0.4)
 
 
@@ -498,13 +517,12 @@ def attitude_exec(planes, ckpt_dir=CKPT_DIR, results_dir=RESULTS_DIR):
     # constrained_layout, not tight_layout: the fan panels carry an equal aspect ratio, so their
     # drawn box is smaller than the cell they sit in, and tight_layout places the neighbouring
     # x-labels against the nominal cell instead and pushes them off the canvas.
-    fig, ax = plt.subplots(1, 2 * n, figsize=(TEXT_W if n > 1 else HALF_W, 2.4 if n > 1 else 1.9),
+    fig, ax = plt.subplots(1, 2 * n, figsize=(TEXT_W if n > 1 else HALF_W, 2.75 if n > 1 else 2.3),
                            layout="constrained")
     fig.get_layout_engine().set(w_pad=0.02, h_pad=0.02, wspace=0.05, hspace=0.0)
     for k, (ac, d) in enumerate(ds):
         _fan(ax[2 * k], d["traj"])
         _channels(ax[2 * k + 1], d["traj"], d["dt"])
-        _colour_key(fig, ax[2 * k])
         if n > 1:                        # name the pair, since two airframes now share the figure
             ax[2 * k].set_title(PRETTY.get(ac, ac.replace("_", " ")), fontsize=8, loc="left",
                                 pad=3)
@@ -512,6 +530,13 @@ def attitude_exec(planes, ckpt_dir=CKPT_DIR, results_dir=RESULTS_DIR):
                 ax[2 * k].set_ylabel("")
         print(f"  {ac}: rob {d['rob']:.3f}, phi {d['phi']:.2f} deg, "
               f"hdot {d['hdot']:.2f} m/s, Va {d['va']:.2f} m/s")
+    # one bank key for the whole figure, under it: inside a fan panel it covered the tracks
+    cb = fig.colorbar(plt.cm.ScalarMappable(cmap="coolwarm",
+                                            norm=plt.Normalize(-BANK_LIM, BANK_LIM)),
+                      ax=list(ax), location="bottom", shrink=0.32, aspect=30, pad=0.02,
+                      ticks=[-BANK_LIM, -BANK_LIM / 2, 0, BANK_LIM / 2, BANK_LIM])
+    cb.set_label("achieved bank [deg]  (< 0 left, > 0 right)", labelpad=1)
+    cb.outline.set_linewidth(0.4)
     name = f"fig_attitude_exec_{planes[0]}" if n == 1 else "fig_attitude_exec"
     return _save(fig, results_dir, name)
 
@@ -580,7 +605,7 @@ def maneuver_facet(plane, ckpt_dir=CKPT_DIR, results_dir=RESULTS_DIR):
                 nc = "0.2"
             else:
                 note, nc = "", "0.2"
-            a.set_title(note, loc="right", fontsize=7, color=nc, pad=2)
+            a.set_title(note, loc="right", fontsize=8, color=nc, pad=2)
             if i == 0:
                 a.set_title(m, loc="left", fontsize=8, fontweight="bold",
                             color=METHOD_COLORS[m], pad=2)
@@ -662,7 +687,7 @@ def _ground_track(ax, tr, norm):
     L = _nice(0.3 * span)
     x1, y0 = east.max() + pad, north.min() - pad - 0.12 * span
     ax.plot([x1 - L, x1], [y0, y0], color="k", lw=1.6, solid_capstyle="butt")
-    ax.text(x1 - L / 2, y0 + 0.015 * span, f"{L:g} m", ha="center", va="bottom", fontsize=7)
+    ax.text(x1 - L / 2, y0 + 0.015 * span, f"{L:g} m", ha="center", va="bottom", fontsize=8)
     alt = -pos[:, 2]
     return float(alt[-1] - alt[0])
 
@@ -689,12 +714,12 @@ def maneuver_render(planes, ckpt_dir=CKPT_DIR, results_dir=RESULTS_DIR):
                 a.set_ylabel(PRETTY.get(ac, ac.replace("_", " ")), fontsize=8)
             if tr is None:
                 a.set_xticks([]); a.set_yticks([])
-                a.text(0.5, 0.5, "departed", transform=a.transAxes, ha="center", fontsize=7)
+                a.text(0.5, 0.5, "departed", transform=a.transAxes, ha="center", fontsize=8)
                 continue
             dh = _ground_track(a, tr, norm)
             a.text(0.02, 0.98, f"Δh {dh:+.0f} m".replace("-", "\u2212"), transform=a.transAxes,
                    ha="left", va="top",
-                   fontsize=7)
+                   fontsize=8)
     cb = fig.colorbar(plt.cm.ScalarMappable(cmap="coolwarm", norm=norm), ax=ax, location="right",
                       shrink=0.75, aspect=22, pad=0.01, ticks=[-50, -25, 0, 25, 50])
     cb.set_label("bank [deg]  (< 0 left, > 0 right)")
@@ -769,13 +794,13 @@ def ge_energy(results_dir=RESULTS_DIR):
     ax[0].legend(handles=[Line2D([], [], color="0.25", lw=1.4, marker="o", ms=3, label="policy"),
                           Line2D([], [], color="0.25", lw=1.2, ls="-.", label="open-loop trim"),
                           Line2D([], [], color="0.25", lw=1.0, ls=":", label="lifting-line")],
-                 fontsize=7.5, frameon=False, loc="lower right", handlelength=2.0,
+                 fontsize=8, frameon=False, loc="lower right", handlelength=2.0,
                  borderpad=0.1, labelspacing=0.25)
     ax[1].legend(handles=[Line2D([], [], color=c, lw=1.4,
                                  label=f"{a.replace('_', ' ')} ($b$={b:.2f} m)")
                           for a, c, b in planes]
                  + [Line2D([], [], color="0.25", lw=1.0, ls="--", alpha=0.6, label="GE off")],
-                 fontsize=7.5, frameon=False, loc="upper left", handlelength=2.0,
+                 fontsize=8, frameon=False, loc="upper left", handlelength=2.0,
                  borderpad=0.1, labelspacing=0.25)
     for a in ax:
         a.grid(True)
@@ -840,7 +865,7 @@ def robustness_ppo(results_dir=RESULTS_DIR):
                 if r and _num(r["survival"]) < 1.0:
                     a.text(i, 0.97, f"s={_num(r['survival']):.2f}",
                            transform=a.get_xaxis_transform(),
-                           ha="center", va="top", fontsize=7, color=c)
+                           ha="center", va="top", fontsize=8, color=c)
         a.set_title(PRETTY[ac], fontsize=9, pad=3)
         a.set_xticks(range(4)); a.set_xticklabels(X, fontsize=8)
         a.set_xlim(-0.3, 3.3)
@@ -882,8 +907,8 @@ def throughput(results_dir=RESULTS_DIR):
         ax.errorbar(x, y, yerr=e, color=c, marker=mk, ms=3.5, ls=ls, lw=1.1, elinewidth=0.9,
                     capsize=2, label=lab)
     ax.plot(*NEURALPLANE, marker="*", ms=8, color="k", ls="")
-    ax.annotate("NeuralPlane\n(reported)", NEURALPLANE, xytext=(-5, -4),
-                textcoords="offset points", ha="right", va="top", fontsize=7)
+    ax.annotate("NeuralPlane\n(reported)", NEURALPLANE, xytext=(0, -7),
+                textcoords="offset points", ha="center", va="top", fontsize=8)
     ax.set_xscale("log"); ax.set_yscale("log")
     ax.set_xlim(0.5, 4e6)
     ax.set_xlabel("parallel environments")
