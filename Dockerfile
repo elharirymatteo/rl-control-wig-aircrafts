@@ -28,7 +28,7 @@ COPY checkpoints checkpoints
 COPY results results
 COPY tests tests
 COPY scripts scripts
-COPY README.md PROVENANCE.md LICENSE ./
+COPY README.md LICENSE ./
 RUN .venv/bin/pip install --no-cache-dir -e ".[test]" --no-deps
 
 ENV PATH=/falcon-s/.venv/bin:$PATH

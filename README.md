@@ -89,8 +89,6 @@ skips them. Point `FALCONS_TRACE_FIXTURE` at the cache to run them.
 `falcons reproduce` re-flies every protocol from the checkpoints and diffs the outcome against
 `results/`. Deterministic rows — every learned policy and the LQR — return bit-identical. MPPI is a
 sampling planner, so its cells are draws and are compared within their measured spread.
-`PROVENANCE.md` records where the code, data and checkpoints came from and how the shipped tables
-relate to the published ones.
 
 ## License
 
