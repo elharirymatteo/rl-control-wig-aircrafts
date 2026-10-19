@@ -10,3 +10,4 @@ results/_logs/
 .venv/
 .venv-jsbsim/
 tools/jsbsim_validate/out/
+checkpoints/ge_training/
