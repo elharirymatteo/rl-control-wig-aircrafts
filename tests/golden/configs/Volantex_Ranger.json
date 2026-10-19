@@ -324,7 +324,7 @@
     0.0,
     0.0
    ],
-   "poly_params_file": "/home/matteo/Projects/WIG_Plane_RL_Control/data/aircraft/Volantex_Ranger/volantex_ranger_poly_params.csv",
+   "poly_params_file": "volantex_ranger_poly_params.csv",
    "rudder_exp": [
     0.0,
     0.0,
@@ -598,7 +598,7 @@
    "Clp": -0.5,
    "Cmq": -12.0,
    "Cnr": -0.1,
-   "poly_params_file": "/home/matteo/Projects/WIG_Plane_RL_Control/data/aircraft/Volantex_Ranger/volantex_ranger_poly_params.csv",
+   "poly_params_file": "volantex_ranger_poly_params.csv",
    "stall_angle_deg": 13.0,
    "type": "polynomial"
   },

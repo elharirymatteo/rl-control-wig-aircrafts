@@ -324,7 +324,7 @@
     0.0,
     0.0
    ],
-   "poly_params_file": "/home/matteo/Projects/WIG_Plane_RL_Control/data/aircraft/Airship_V7/A1_V8_poly_params.csv",
+   "poly_params_file": "A1_V8_poly_params.csv",
    "rudder_exp": [
     0.0,
     0.0,
@@ -641,7 +641,7 @@
    "Clp": -0.4,
    "Cmq": -10.0,
    "Cnr": -0.15,
-   "poly_params_file": "/home/matteo/Projects/WIG_Plane_RL_Control/data/aircraft/Airship_V7/A1_V8_poly_params.csv",
+   "poly_params_file": "A1_V8_poly_params.csv",
    "stall_angle_deg": 13.0,
    "type": "polynomial"
   },
