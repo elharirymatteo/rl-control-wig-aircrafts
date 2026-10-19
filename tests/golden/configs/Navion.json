@@ -324,7 +324,7 @@
     0.0,
     0.0
    ],
-   "poly_params_file": "/home/matteo/Projects/WIG_Plane_RL_Control/data/aircraft/Navion/Navion_poly_params.csv",
+   "poly_params_file": "Navion_poly_params.csv",
    "rudder_exp": [
     0.0,
     0.0,
@@ -597,7 +597,7 @@
  },
  "raw": {
   "aero_params": {
-   "poly_params_file": "/home/matteo/Projects/WIG_Plane_RL_Control/data/aircraft/Navion/Navion_poly_params.csv",
+   "poly_params_file": "Navion_poly_params.csv",
    "stall_angle_deg": 13.0,
    "type": "polynomial"
   },

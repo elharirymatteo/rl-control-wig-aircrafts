@@ -13,7 +13,7 @@ from falcons.paths import CKPT_DIR
 GOLD = Path(__file__).parent / "golden"
 # The 39 MB rollout cache lives outside the repo; point FALCONS_TRACE_FIXTURE at it to run the
 # replay gate, which is the only way to reproduce the MPPI rows exactly (nothing re-flies).
-FIX = Path(os.environ.get("FALCONS_TRACE_FIXTURE", "/home/matteo/Projects/falcon-s-goldens/traces"))
+FIX = Path(os.environ["FALCONS_TRACE_FIXTURE"]) if os.environ.get("FALCONS_TRACE_FIXTURE") else None
 
 
 def test_streams_have_four_names_and_equal_length():
@@ -25,7 +25,7 @@ def test_streams_have_four_names_and_equal_length():
 def test_table_replays_from_cached_traces(tmp_path):
     """The gate: the archive's own rollout cache, replayed through this module, must reproduce
     every cell of the golden table byte-for-byte -- MPPI included, since no rollout is flown."""
-    if not FIX.exists():
+    if FIX is None or not FIX.exists():
         pytest.skip("trace fixture not present")
     from falcons.benchmark.maneuvers import run
     shutil.copytree(FIX, tmp_path / "traces")
