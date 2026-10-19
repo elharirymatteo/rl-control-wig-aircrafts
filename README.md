@@ -297,14 +297,14 @@ true simulator state. The severities are derived in
 
 Learning curves of the 63 shipped runs (`results/curves/`): the periodic evaluation metric against
 environment steps, IQM over the five seeds with a 95 % bootstrap band. PPO trains for 1.5×10⁸
-steps, SAC and TD3 for 3×10⁷. Wall clock per run on one RTX 4090, evaluation included
+steps, SAC and TD3 for 3×10⁷. Median wall clock per run on one RTX 4090, evaluation included
 (`results/train_timings.tsv`):
 
 | Algorithm | Altitude task | Attitude task |
 |---|--:|--:|
-| PPO | 6.4 min | 8.0 min |
-| SAC | 71 min | 65 min |
-| TD3 | 26 min | 27 min |
+| PPO | 6.3 min | 6.5 min |
+| SAC | 66 min | 66 min |
+| TD3 | 26 min | 26 min |
 
 ### Simulator throughput
 
