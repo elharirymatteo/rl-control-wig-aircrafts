@@ -6,15 +6,16 @@
 Writes docs/data/results.json (benchmark tables, ground effect, robustness, learning curves,
 airframes) and docs/data/maneuvers.json (decimated 3D flight traces for the replay viewer).
 
-Benchmark numbers come from tests/golden/, which holds the published tables (PROVENANCE.md);
+Benchmark numbers come from tests/golden/, which holds the published tables;
 the flight traces come from results/traces/, the shipped re-flown run. For each
-(airframe, maneuver, method) cell the viewer replays the median run by bank RMSE: of three
+(airframe, maneuver, method) cell the viewer replays the median run by bank RMSE: of the five
 training seeds for the learned methods, of five sampling draws for MPPI, and the single
 deterministic run of the LQR. A run that left the envelope ranks last.
 """
 import csv
 import json
 import pickle
+import re
 from pathlib import Path
 
 import numpy as np
@@ -81,7 +82,12 @@ def results():
            if r["method"] == "PPO"]
     ge_trim = read_csv(GOLD / "ge_trim.csv", keep_str=("aircraft",))
     ge_cl = read_csv(GOLD / "ge_energy.csv", keep_str=("aircraft",))
+    opt = lambda name, **kw: read_csv(RES / name, **kw) if (RES / name).exists() else []
     return dict(altitude=alt, maneuvers=man, robustness=rob, ge_trim=ge_trim, ge_closed=ge_cl,
+                ge_training=opt("ge_training_agg.csv", keep_str=("plane", "band", "train")),
+                ge_effects=opt("ge_training_effects.csv", keep_str=("plane", "band", "effect")),
+                lqr_envelope=opt("lqr_envelope.csv", keep_str=("aircraft",)),
+                jsbsim=opt("jsbsim/paper_table.csv", keep_str=("plane", "ground_effect")),
                 curves=curves(), airframes=airframes())
 
 
@@ -95,10 +101,12 @@ def candidates(plane, man, method):
         return [(f"draw {i + 1} of {len(runs)}", r) for i, r in enumerate(runs)]
     if method == "lqr":
         return [("deterministic", pickle.load(open(trace_file(plane, man, "lqr"), "rb"))[0])]
-    out = []
-    for s, suf in enumerate(("", "_s1", "_s2")):
-        out.append((f"seed {s} of 3", pickle.load(open(trace_file(plane, man, method, suf), "rb"))[0]))
-    return out
+    pat = re.compile(rf"{plane}_{man}_{method}(?:_s(\d+))?\.pkl")
+    seeds = sorted(int(m.group(1) or 0) for f in (RES / "traces").iterdir()
+                   if (m := pat.fullmatch(f.name)))
+    return [(f"seed {s} of {len(seeds)}",
+             pickle.load(open(trace_file(plane, man, method, f"_s{s}" if s else ""), "rb"))[0])
+            for s in seeds]
 
 
 def median_run(cands):

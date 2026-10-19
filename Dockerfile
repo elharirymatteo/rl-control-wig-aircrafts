@@ -1,7 +1,7 @@
 # FALCON-S: the reproduction environment, pinned to the same lock the venv uses.
 #
 # The benchmark's plant is an NVIDIA Warp kernel set, so the image needs a CUDA runtime and the
-# container needs `--gpus all`. Everything the paper is reproduced from — the 39 checkpoints, the
+# container needs `--gpus all`. Everything the paper is reproduced from — the 63 checkpoints, the
 # aircraft data and the shipped results — is in the repository and therefore in the image.
 #
 #   docker build -t falcons:1.0.0 .
