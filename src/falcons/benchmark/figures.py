@@ -856,16 +856,23 @@ def robustness_ppo(results_dir=RESULTS_DIR):
                            color=c, lw=1.4, ms=3.5, elinewidth=0.9, capsize=1.8, label=lab)
             else:
                 a.plot(xs, ys, "o-", color=c, lw=1.4, ms=3.5, label=lab)
-        # Survival is the second axis of the result and leaves 1.00 in only two cells. Rather than
-        # spend a panel on it, flag those cells along the top of the plot; a line that simply stops
-        # (Ranger turbulence) is a cell where every maneuver departed and there is no RMSE to draw.
-        for fam, (_, c) in FAM.items():
+        # Survival is the second axis of the result. Rather than spend a panel on it, flag the cells
+        # that lost runs along the top of the plot, one row per family so flags at the same
+        # severity never collide; a line that simply stops is a family whose runs all departed,
+        # with no RMSE left to draw, and its flag says so.
+        flagged = [(fam, c) for fam, (_, c) in FAM.items()
+                   if any(_num(idx[(ac, fam, sv)]["survival"]) < 1.0
+                          for sv in ("mild", "medium", "severe") if (ac, fam, sv) in idx)]
+        for row, (fam, c) in enumerate(flagged):
             for i, sev in enumerate(["mild", "medium", "severe"], start=1):
                 r = idx.get((ac, fam, sev))
-                if r and _num(r["survival"]) < 1.0:
-                    a.text(i, 0.97, f"s={_num(r['survival']):.2f}",
-                           transform=a.get_xaxis_transform(),
-                           ha="center", va="top", fontsize=8, color=c)
+                sv = _num(r["survival"]) if r else 1.0
+                if sv >= 1.0:
+                    continue
+                txt = "all departed" if sv == 0.0 else \
+                    f"s={sv:.2f}" if round(sv, 2) < 1.0 else f"s={sv:.3f}"
+                a.text(i, 0.97 - 0.085 * row, txt, transform=a.get_xaxis_transform(),
+                       ha="center", va="top", fontsize=8, color=c)
         a.set_title(PRETTY[ac], fontsize=9, pad=3)
         a.set_xticks(range(4)); a.set_xticklabels(X, fontsize=8)
         a.set_xlim(-0.3, 3.3)
@@ -873,9 +880,13 @@ def robustness_ppo(results_dir=RESULTS_DIR):
         a.tick_params(axis="y", labelsize=8)
         a.grid(True)
     ax[0].set_ylabel("bank RMSE [deg]", fontsize=9)
-    # The Ranger panel's upper left is empty at every severity; in the Airship panel any corner
-    # crosses a line.
-    ax[1].legend(fontsize=8, frameon=False, loc="upper left", handlelength=2.0,
+    # headroom: the flag rows take the top 30 % of the panels, the data stays below them
+    top = np.nanmax([_num(r.get("phi_rmse_hi")) if np.isfinite(_num(r.get("phi_rmse_hi")))
+                     else _num(r["phi_rmse"]) for r in rs])
+    ax[0].set_ylim(0, 1.45 * top)
+    # The survival flags take the top of both panels; the Ranger's centre left is empty at every
+    # severity.
+    ax[1].legend(fontsize=8, frameon=False, loc="center left", handlelength=2.0,
                  borderpad=0.1, labelspacing=0.3)
     fig.tight_layout(pad=0.4)
     return _save(fig, results_dir, "fig_robustness_ppo")
