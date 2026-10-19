@@ -324,7 +324,7 @@
     0.0,
     0.0
    ],
-   "poly_params_file": "A1_V8_poly_params.csv",
+   "poly_params_file": "Airship_V7_poly.csv",
    "rudder_exp": [
     0.0,
     0.0,
@@ -452,6 +452,7 @@
      0,
      -0.293
     ],
+    "induced_drag_k": 0.050053,
     "mac": 0.62,
     "span": 5.0,
     "taper_ratio": 0.39

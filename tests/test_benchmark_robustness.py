@@ -48,7 +48,6 @@ def _rows_of_method(gold, method, out):
 
 @pytest.mark.slow
 @pytest.mark.cuda
-@pytest.mark.xfail(reason="golden predates the TMLR revision (5 seeds, pooled IQM/CI, N_REAL realizations, sideslip fix); regenerate tests/golden", strict=False)
 def test_table_matches_golden(tmp_path, gate_copy):
     from falcons.benchmark.robustness import run
     gold = _rows_of_method(GOLD / "robustness.csv", "PPO", tmp_path / "golden_ppo.csv")

@@ -31,12 +31,11 @@ def test_learned_rows_match_golden_volantex_ppo():
 
 @pytest.mark.slow
 @pytest.mark.cuda
-@pytest.mark.xfail(reason="golden predates the TMLR revision (5 seeds, pooled IQM/CI, N_REAL realizations, sideslip fix); regenerate tests/golden", strict=False)
 def test_full_altitude_table_matches_golden(tmp_path, gate_copy):
-    """Archive mode: the golden's three MPPI sweeps all ran at seed 0, so the fidelity gate
-    reproduces that (mppi_seeds=(0, 0, 0)) rather than the shipped distinct-seed default.
+    """The golden is the shipped run, whose three MPPI sweeps ran at sampler seeds 0, 1, 2 (the
+    `falcons benchmark altitude` default); the MPPI rows are draws and are gated by their spread.
 
-    Two hours of flying produce this CSV; gate_copy parks it under results/_gate/ before the
+    Three hours of flying produce this CSV; gate_copy parks it under results/_gate/ before the
     comparison, so a failure can be read off the table rather than re-flown."""
-    out = run(["Airship_V7", "Volantex_Ranger"], results_dir=tmp_path, mppi_seeds=(0, 0, 0))
+    out = run(["Airship_V7", "Volantex_Ranger"], results_dir=tmp_path, mppi_seeds=(0, 1, 2))
     assert compare_csv(gate_copy(out), GOLD / "altitude.csv", TOLERANCE["altitude.csv"]) == []

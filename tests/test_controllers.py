@@ -22,8 +22,10 @@ def test_lqr_gains_identical_to_golden():
         np.testing.assert_array_equal(new, old)
 
 
-def test_thirty_nine_checkpoints_ship():
-    assert len(list(CKPT_DIR.glob("*.pt"))) == 39
+def test_sixty_three_checkpoints_ship():
+    # 5 seeds x {PPO, SAC, TD3} x {altitude, attitude} x {V7, Ranger}, plus PPO altitude on the
+    # other three airframes for the ground-effect sweep
+    assert len(list(CKPT_DIR.glob("*.pt"))) == 63
 
 
 @pytest.mark.cuda

@@ -324,7 +324,7 @@
     0.0,
     0.0
    ],
-   "poly_params_file": "Navion_poly_params.csv",
+   "poly_params_file": "Navion_poly.csv",
    "rudder_exp": [
     0.0,
     0.0,
@@ -446,12 +446,13 @@
    "T_s": 3.0,
    "WP": {
     "area": 17.112,
-    "aspect_ratio": 6.04,
+    "aspect_ratio": 6.068,
     "cg_offset_vector": [
      0.0,
      0.0,
      0.0
     ],
+    "induced_drag_k": 0.058197,
     "mac": 1.74,
     "span": 10.19,
     "taper_ratio": 0.54
