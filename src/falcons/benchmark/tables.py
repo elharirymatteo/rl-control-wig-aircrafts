@@ -90,6 +90,17 @@ def ci(v, lo, hi, fmt="{:.2f}"):
     return m if a == "---" else f"{m} [{a}, {b}]"
 
 
+def ci_err(v, lo, hi):
+    """An error IQM with its interval, each bound formatted as `rmse_cell` formats a value: errors
+    here span from a solver residual to tens of metres, so below 1 mm they print in scientific
+    notation rather than as 0.000."""
+    m = rmse_cell(v)
+    if m == "---":
+        return m
+    a, b = rmse_cell(lo), rmse_cell(hi)
+    return m if a == "---" else f"{m} [{a}, {b}]"
+
+
 def kn(k, n):
     """A count out of a total, "48/50"."""
     try:
@@ -176,13 +187,12 @@ def protocol_table_iqm(rs):
                 continue
             ts = ci(r["settling_iqm"], r["settling_lo"], r["settling_hi"], "{:.1f}") \
                 if float(r["n_acquired"] or 0) >= 5 else "---"
-            rm = ci(r["rmse_iqm"], r["rmse_lo"], r["rmse_hi"],
-                    "{:.3f}" if float(r["rmse_iqm"] or "nan") < 10 else "{:.1f}") \
+            rm = ci_err(r["rmse_iqm"], r["rmse_lo"], r["rmse_hi"]) \
                 if r["rmse_iqm"] not in ("", "nan") else "---"
             lines.append(f"& {m} & {int(float(r['n_seeds']))} & "
                          f"{kn(r['n_survived'], r['n_total'])} & "
                          f"{kn(r['n_acquired'], r['n_total'])} & {rm} & {ts} & "
-                         f"{ci(r['overshoot_iqm'], r['overshoot_lo'], r['overshoot_hi'])} \\")
+                         f"{ci(r['overshoot_iqm'], r['overshoot_lo'], r['overshoot_hi'])} \\\\")
         body += block(lines, PRETTY.get(ac, ac)) + [r"\midrule"]
     body[-1] = r"\bottomrule"
     return "\n".join(
@@ -277,6 +287,27 @@ def robustness_table(rs):
             body.append(f"{head} & {sev} & {cells(dist, sev)} \\\\")
         body.append(r"\midrule")
     body[-1] = r"\bottomrule"
+    if pooled:
+        caption = (
+            r"\caption{Robustness of the PPO attitude executor under one disturbance family at a "
+            r"time. Each cell pools five training seeds over the four maneuvers of "
+            r"Table~\ref{tab:maneuver}, with 100 noise or gust realizations per seed and maneuver "
+            r"for the two stochastic families. Surv. counts the runs completed inside the flight "
+            r"envelope, and $\phi$ is the interquartile mean of the bank RMSE in degrees over those "
+            r"runs with its 95\% bootstrap interval, both computed from the true simulator state "
+            r"and never from the disturbed observation. Severities are defined in physical units "
+            r"(sensor noise as per-channel floors, the delays as 20--100~ms of transport lag, "
+            r"turbulence as Dryden gusts at the specification intensity "
+            r"$\sigma_u/V_a = 0.05$--$0.15$).}")
+        return "\n".join(
+            [r"\begin{table}[t]", caption,
+             r"\label{tab:robustness}", r"\centering",
+             r"\setlength{\tabcolsep}{3pt}",
+             r"\begin{tabular}{llrrrr}", r"\toprule",
+             r"& & \multicolumn{2}{c}{Airship V7} & \multicolumn{2}{c}{Volantex Ranger} \\",
+             r"\cmidrule(lr){3-4}\cmidrule(lr){5-6}",
+             r"& Level & Surv. & $\phi$ ($^\circ$) & Surv. & $\phi$ ($^\circ$) \\",
+             r"\midrule"] + body + [r"\end{tabular}", r"\end{table}", ""])
     return "\n".join(
         [r"\begin{table}[t]",
          r"\caption{Robustness of the PPO attitude executor. Each cell is the mean over the four "
@@ -325,6 +356,7 @@ def maneuver_table(rs):
     if not rs:
         return ""
     shapes = ["circle", "figure8", "helix", "sturn"]
+    pooled = "phi_rmse_iqm" in rs[0]
     body = []
     for ac in dict.fromkeys(r["aircraft"] for r in rs):
         lines = []
@@ -333,8 +365,11 @@ def maneuver_table(rs):
             for sh in shapes:
                 r = next((x for x in rs if x["aircraft"] == ac and x["method"] == m
                           and x["maneuver"] == sh), None)
-                if r is None or float(r["survival"]) == 0.0:
+                if r is None:
                     cells.append("---")
+                elif float(r["survival"]) == 0.0:
+                    # every run departed: no error to report, only how many runs there were
+                    cells.append(f"---$^{{{int(float(r['n_runs']))}}}$" if pooled else "---")
                 elif r.get("phi_rmse_iqm"):
                     # pooled form: IQM [95% CI] over the surviving runs, departures counted
                     d = int(float(r.get("n_departed") or 0))
@@ -352,6 +387,24 @@ def maneuver_table(rs):
             lines.append(f"& {m} & " + " & ".join(cells) + r" \\")
         body += block(lines, PRETTY.get(ac, ac)) + [r"\midrule"]
     body[-1] = r"\bottomrule"
+    if pooled:
+        caption = (
+            r"\caption{Attitude-stream tracking across the four named maneuvers: bank-angle RMSE "
+            r"in degrees, the interquartile mean over the runs that stayed inside the flight "
+            r"envelope with its 95\% bootstrap interval. A superscript counts the runs that "
+            r"departed; a dash with a superscript marks a cell where every run departed. All five "
+            r"methods drive the identical $(\phi^\star,\dot h^\star,V_a^\star)$ stream through "
+            r"the same plant. The learned methods are flown once per training seed, five seeds. "
+            r"MPPI has no seeds, but a single rollout is one draw, so it is flown five times with "
+            r"different sampling seeds. The LQR is a deterministic law and is flown once"
+            + _departures(rs) + ".}")
+        return "\n".join(
+            [r"\begin{table*}[t]", caption,
+             r"\label{tab:maneuver}", r"\centering",
+             r"\setlength{\tabcolsep}{4pt}",
+             r"\begin{tabular}{llrrrr}", r"\toprule",
+             r"& Method & Circle & Figure-8 & Helix & S-turn \\",
+             r"\midrule"] + body + [r"\end{tabular}", r"\end{table*}", ""])
     return "\n".join(
         [r"\begin{table*}[t]",
          r"\caption{Attitude-stream tracking across the four named maneuvers: bank-angle RMSE "
