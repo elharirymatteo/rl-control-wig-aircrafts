@@ -92,10 +92,10 @@ def ci(v, lo, hi, fmt="{:.2f}"):
 
 def ci_err(v, lo, hi):
     """An error IQM with its interval, each bound formatted as `rmse_cell` formats a value: errors
-    here span from a solver residual to tens of metres, so below 1 mm they print in scientific
-    notation rather than as 0.000."""
+    here span from a solver residual to tens of metres, so below 1 mm the value prints in
+    scientific notation rather than as 0.000, and without an interval."""
     m = rmse_cell(v)
-    if m == "---":
+    if m == "---" or "times" in m:      # a solver residual: its interval says nothing more
         return m
     a, b = rmse_cell(lo), rmse_cell(hi)
     return m if a == "---" else f"{m} [{a}, {b}]"
@@ -115,10 +115,15 @@ def pct(x):
     return "---" if v == "---" else f"${v}$\\%"
 
 
+# a rotated cell spans only the rows of its block; five rows do not fit "Volantex Ranger"
+ROTATED = {"Volantex Ranger": "Volantex"}
+
+
 def block(lines, name):
     """Prepend the rotated airframe cell to a block of already-formatted rows."""
     if not lines:
         return []
+    name = ROTATED.get(name, name)
     head = f"\\multirow{{{len(lines)}}}{{*}}{{\\rotatebox{{90}}{{{name}}}}}"
     return [head + " " + lines[0]] + lines[1:]
 
