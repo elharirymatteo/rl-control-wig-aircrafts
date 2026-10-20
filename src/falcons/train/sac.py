@@ -28,12 +28,15 @@ REPLAY_CAP = 1_000_000
 STEPS = 30_000_000     # default budget, the one the shipped checkpoints were trained at
 CURVES_DIR = RESULTS_DIR / "curves"
 
-# CAPS smoothness (Mysore et al.), ported from falcons/train/ppo.py. OFF by default (the shipped
-# checkpoints are baseline SAC). SAC survives the attitude-stream maneuvers but tracks loosely
-# (phi RMSE 3-39deg vs PPO 0.4-2.4deg) because its actor is jittery; CAPS regularizes the
-# deterministic MEAN action (orthogonal to the entropy exploration term). Defaults larger than
-# PPO's 0.2/0.1: SAC's actor loss is scaled by Q-value magnitude (returns over horizon), not
-# normalized advantages, so the same weights bite far less.
+# CAPS smoothness (Mysore et al.), ported from falcons/train/ppo.py, where PPO always trains with it.
+# ON by default for the attitude task (CAPS_TASKS), for SAC and TD3 alike: without it both learn
+# bang-bang control there (actions saturated 30-90 % of the time, ~0.1-0.2 change per 10 ms step),
+# and on the Airship V7 that elevator chatter drives the angle of attack past the stall limit
+# within seconds. The altitude policies are smooth without it, so that task keeps the baseline.
+# CAPS regularizes the deterministic MEAN action (orthogonal to the entropy exploration term).
+# Weights larger than PPO's 0.2/0.1: an off-policy actor loss is scaled by Q-value magnitude
+# (returns over horizon), not normalized advantages, so the same weights bite far less.
+CAPS_TASKS = ("attitude",)
 CAPS_LAMBDA_T = 0.5    # temporal: penalize mean(obs) drifting from mean(next_obs) -> smooth in time
 CAPS_LAMBDA_S = 0.25   # spatial: penalize mean(obs) sensitivity to obs noise -> Lipschitz / low jitter
 CAPS_SIGMA = 0.05      # spatial-perturbation std (obs are normalized-ish, matches PPO)
@@ -129,9 +132,12 @@ class _ActorMeanShim:
 def train(aircraft, task="altitude", steps=None, seed=0, ckpt_dir=CKPT_DIR,
           curves_dir=CURVES_DIR, target_entropy=None, n_envs=N_ENVS, lr=LR, gamma=GAMMA,
           tau=TAU, batch=BATCH, updates_per_step=UPDATES_PER_STEP, replay_cap=REPLAY_CAP,
-          warmup=WARMUP, caps=False, caps_t=CAPS_LAMBDA_T, caps_s=CAPS_LAMBDA_S,
+          warmup=WARMUP, caps=None, caps_t=CAPS_LAMBDA_T, caps_s=CAPS_LAMBDA_S,
           caps_sigma=CAPS_SIGMA, caps_dims=None, tanh=False):
-    """Train SAC; returns the best-eval record {"score", "state", "msg"}."""
+    """Train SAC; returns the best-eval record {"score", "state", "msg"}. `caps` None means the
+    task default (CAPS_TASKS)."""
+    if caps is None:
+        caps = task in CAPS_TASKS
     import warp as wp
 
     steps = steps or STEPS

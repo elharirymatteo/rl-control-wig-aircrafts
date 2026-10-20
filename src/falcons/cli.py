@@ -42,9 +42,12 @@ def cmd_check(a):
 def cmd_train(a):
     from falcons.train import tasks, sac, td3
     curves = a.results / "curves"
-    if a.algo == "ppo":
-        (tasks.train_altitude if a.task == "altitude" else tasks.train_attitude)(
-            a.plane, a.steps, a.seed, a.checkpoints, curves)
+    if a.latency_ms and not (a.algo == "ppo" and a.task == "attitude"):
+        raise SystemExit("--latency-ms is implemented for PPO on the attitude task only")
+    if a.algo == "ppo" and a.task == "attitude":
+        tasks.train_attitude(a.plane, a.steps, a.seed, a.checkpoints, curves, a.latency_ms)
+    elif a.algo == "ppo":
+        tasks.train_altitude(a.plane, a.steps, a.seed, a.checkpoints, curves)
     else:
         (sac if a.algo == "sac" else td3).train(a.plane, a.task, a.steps, a.seed,
                                                 a.checkpoints, curves)
@@ -105,6 +108,8 @@ def main(argv=None):
     s.add_argument("--algo", choices=ALGOS, required=True); s.add_argument("--task", choices=TASKS, required=True)
     s.add_argument("--plane", choices=PLANES, required=True); s.add_argument("--seed", type=int, default=0)
     s.add_argument("--steps", type=int, help="total env steps (default: the task budget)")
+    s.add_argument("--latency-ms", type=int, default=0,
+                   help="PPO attitude: train through random 0..N ms action and observation delays")
     s = sub.add_parser("eval", help="one benchmark cell, printed"); _dirs(s)
     s.add_argument("--algo", choices=ALGOS + ("lqr", "mppi"), required=True); s.add_argument("--task", choices=TASKS, required=True)
     s.add_argument("--plane", choices=PLANES, required=True)

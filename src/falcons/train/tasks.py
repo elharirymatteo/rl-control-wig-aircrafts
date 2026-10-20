@@ -115,13 +115,19 @@ def evaluate_attitude(agent, aircraft, steps=2000, settle=200):
     return (rob, phi_rmse, hdot_rmse, va_rmse, settle_time)
 
 
-def train_attitude(aircraft, total_steps=None, seed=0, ckpt_dir=CKPT_DIR, curves_dir=CURVES_DIR):
+def train_attitude(aircraft, total_steps=None, seed=0, ckpt_dir=CKPT_DIR, curves_dir=CURVES_DIR,
+                   latency_ms=0):
+    """`latency_ms` > 0 trains through randomized action and observation delays of 0..latency_ms
+    per episode (falcons/envs/latency.py); the periodic evaluation stays latency-free."""
     import warp as wp
     from falcons.envs.attitude import AttitudeEnv
     total_steps = total_steps or TASK_DEFAULTS["attitude"]["total_steps"]
     wp.init()
     torch.manual_seed(seed)
     env = AttitudeEnv(N_ENVS, DEVICE, attitude_env_cfg(aircraft))
+    if latency_ms:
+        from falcons.envs.latency import LatencyDR
+        env = LatencyDR(env, max_steps=round(latency_ms / 10.0), seed=seed)     # 100 Hz control
     agent = Agent(env.num_obs, env.num_act).to(DEVICE)
 
     def post_iter(it, iters, agent):

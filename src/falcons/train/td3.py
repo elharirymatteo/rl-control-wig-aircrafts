@@ -23,7 +23,8 @@ from falcons.paths import CKPT_DIR
 from falcons.train.curves import log_curve
 from falcons.train.sac import (BATCH, CURVES_DIR, DEVICE, GAMMA, LR, N_ENVS, REPLAY_CAP, STEPS,
                                TAU, UPDATES_PER_STEP, WARMUP)
-from falcons.train.sac import Replay, QNet, mlp, _ActorMeanShim
+from falcons.train.sac import (CAPS_LAMBDA_S, CAPS_LAMBDA_T, CAPS_SIGMA, CAPS_TASKS, Replay, QNet,
+                               caps_penalty, mlp, _ActorMeanShim)
 
 EXPL_NOISE = 0.1       # std of the exploration Gaussian on the deterministic action (in [-1,1])
 POLICY_NOISE = 0.2     # std of the target-policy smoothing noise
@@ -50,10 +51,13 @@ def train(aircraft, task="altitude", steps=None, seed=0, ckpt_dir=CKPT_DIR,
           curves_dir=CURVES_DIR, n_envs=N_ENVS, lr=LR, gamma=GAMMA, tau=TAU, batch=BATCH,
           updates_per_step=UPDATES_PER_STEP, replay_cap=REPLAY_CAP, warmup=WARMUP,
           expl_noise=EXPL_NOISE, policy_noise=POLICY_NOISE, noise_clip=NOISE_CLIP,
-          policy_delay=POLICY_DELAY, tanh=False):
+          policy_delay=POLICY_DELAY, tanh=False, caps=None, caps_t=CAPS_LAMBDA_T,
+          caps_s=CAPS_LAMBDA_S, caps_sigma=CAPS_SIGMA, caps_dims=None):
     """Train TD3; returns the best-eval record {"score", "state", "msg"}. Signature mirrors
-    falcons.train.sac.train (minus the entropy/CAPS knobs, plus TD3's exploration/smoothing/
-    delay)."""
+    falcons.train.sac.train (minus the entropy knob, plus TD3's exploration/smoothing/delay);
+    `caps` None means the task default (falcons.train.sac.CAPS_TASKS)."""
+    if caps is None:
+        caps = task in CAPS_TASKS
     import warp as wp
 
     steps = steps or STEPS
@@ -156,6 +160,9 @@ def train(aircraft, task="altitude", steps=None, seed=0, ckpt_dir=CKPT_DIR,
                 upd["n"] += 1
                 if upd["n"] % policy_delay == 0:      # delayed actor + target updates
                     actor_loss = -q1(b_obs, actor(b_obs)).mean()
+                    if caps:
+                        actor_loss = actor_loss + caps_penalty(
+                            actor, b_obs, b_nxt, b_mask, caps_t, caps_s, caps_sigma, dims=caps_dims)
                     actor_opt.zero_grad(set_to_none=True)
                     actor_loss.backward()
                     actor_opt.step()
