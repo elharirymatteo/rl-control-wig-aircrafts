@@ -18,7 +18,7 @@ import pytest
 
 from conftest import ONLINE_PLANES
 from falcons.aircraft.config import AircraftConfig
-from falcons.aircraft.derivatives import GE_MODELS, ph_mu_d, ph_mu_l
+from falcons.aircraft.derivatives import GE_MODELS, ph_mu_d, ph_mu_l, ph_relative
 from falcons.aircraft.params import DerivativeAeroParameters
 from falcons.sim.aero_contract import AeroInputs
 from falcons.sim.cpu.physics.aerodynamics import DerivativeAerodynamics
@@ -97,8 +97,9 @@ def test_free_air_is_reached_above_the_table(ac):
 
 
 @pytest.mark.parametrize("ac", ONLINE_PLANES)
-def test_ground_effect_is_off_below_the_table_floor_but_held(ac):
-    """Below the sweep the increment freezes rather than extrapolating."""
+def test_ground_effect_is_off_below_the_table_floor_but_held(ac, monkeypatch):
+    """With the sweep alone, the increment freezes below its floor rather than extrapolating."""
+    monkeypatch.setenv("FALCONS_GE_MODEL", "openvsp")
     m = build_cpu(ac, True)
     base = cases_for(ac)[1]
     at_floor = base._replace(h=m.p.hc_floor * m.mac)
@@ -253,3 +254,36 @@ def test_the_two_models_agree_on_lift_and_drag_inside_the_sweep(ac, h_over_b, mo
     _, _, ph = _run_point(ac, h_over_b, "phillips_hunsaker", monkeypatch)
     assert vsp.CL / free.CL == pytest.approx(ph.CL / free.CL, rel=0.03)
     assert vsp.CD / free.CD == pytest.approx(ph.CD / free.CD, rel=0.03)
+
+
+# ─── the hybrid: the sweep where measured, the correlation's trend below its floor ──────────────
+
+@pytest.mark.parametrize("ac", ONLINE_PLANES)
+@pytest.mark.parametrize("h_over_b", [0.2001, 0.25, 0.5, 1.0, 3.0])
+def test_hybrid_is_the_sweep_at_and_above_its_floor(ac, h_over_b, monkeypatch):
+    hb_floor = DerivativeAeroParameters.from_config(AircraftConfig(ac).load()).hc[0] \
+        * geometry(ac)[1] / geometry(ac)[0]
+    hb = max(h_over_b, hb_floor)
+    base = cases_for(ac)[1]._replace(h=hb * geometry(ac)[0])
+    monkeypatch.setenv("FALCONS_GE_MODEL", "openvsp")
+    vsp = build_cpu(ac).coefficients(base).as_array()
+    monkeypatch.setenv("FALCONS_GE_MODEL", "hybrid")
+    np.testing.assert_allclose(build_cpu(ac).coefficients(base).as_array(), vsp, rtol=0, atol=1e-12)
+
+
+@pytest.mark.parametrize("ac", ONLINE_PLANES)
+def test_hybrid_continues_the_floor_with_the_correlation_trend(ac, monkeypatch):
+    monkeypatch.setenv("FALCONS_GE_MODEL", "hybrid")
+    m = build_cpu(ac)
+    span, mac = geometry(ac)
+    hb_floor = m.p.hc[0] * mac / span
+    base = cases_for(ac)[1]
+    floor = m.coefficients(base._replace(h=hb_floor * span))
+    just_below = m.coefficients(base._replace(h=(hb_floor - 1e-7) * span))
+    np.testing.assert_allclose(just_below.as_array(), floor.as_array(), rtol=1e-5)  # no step
+    deep = m.coefficients(base._replace(h=0.1 * span))
+    ml, dd = ph_relative(0.1, hb_floor, m.p.taper_ratio, m.p.aspect_ratio)
+    assert deep.CL == pytest.approx(floor.CL * ml, rel=1e-12)
+    assert deep.CL > floor.CL                          # lift keeps rising toward the surface
+    assert (deep.CS, deep.Cl, deep.Cm, deep.Cn) == pytest.approx(
+        (floor.CS, floor.Cl, floor.Cm, floor.Cn), rel=1e-12)          # moments held at the floor

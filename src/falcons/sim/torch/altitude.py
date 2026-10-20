@@ -53,6 +53,19 @@ def _tables(params, device, dtype):
     return _TORCH_TABLES[key]
 
 
+def _ph_mu_l(hb, tr, ar):
+    """Phillips-Hunsaker lift factor on a tensor; falcons.aircraft.derivatives.ph_mu_l."""
+    return 1.0 + (1.0 - 2.25 * (tr ** 0.00273 - 0.997) * (ar ** 0.717 + 13.6)) \
+        * (288.0 * hb ** 0.787 * torch.exp(-9.14 * hb ** 0.327)) / ar ** 0.882
+
+
+def _ph_mu_d(hb, tr, ar):
+    """Phillips-Hunsaker induced-drag factor on a tensor; falcons.aircraft.derivatives.ph_mu_d."""
+    t1 = 1.0 - (1.0 - 0.157 * max(0.0, tr ** 0.775 - 0.373) * max(0.0, ar ** 0.417 - 1.27)) \
+        * torch.exp(-4.74 * hb ** 0.814)
+    return t1 - hb * hb * torch.exp(-3.88 * hb ** 0.758)
+
+
 def torch_coefficients(params, span, mac, ge_enable, device, dtype,
                        alpha, beta, v, elevator, aileron, rudder, p, q, r, h):
     """Batched OpenVSP derivative model. Mirrors
@@ -74,7 +87,7 @@ def torch_coefficients(params, span, mac, ge_enable, device, dtype,
     da = alpha - params.alpha_run
     de = elevator - params.de_run
 
-    if ge_enable and params.ge_model == "openvsp":
+    if ge_enable and params.ge_model != "phillips_hunsaker":
         # Bracket h/c in the sweep and interpolate the increment. Clamping the weight is what
         # makes this correct at both ends: held below the sweep, and exactly zero increment at
         # the top row and above, which is free air.
@@ -104,15 +117,22 @@ def torch_coefficients(params, span, mac, ge_enable, device, dtype,
     Cm = (g("CMm_Total") + g("CMm_Alpha") * da + g("CMm_elevator") * de + g("CMm_q") * q_hat)
     Cn = (g("CMn_Beta") * beta + g("CMn_aileron") * aileron + g("CMn_rudder") * rudder
           + g("CMn_p") * p_hat + g("CMn_r") * r_hat)
-    if ge_enable and params.ge_model == "phillips_hunsaker":
-        # lift and induced drag only, on the free-air set (falcons.aircraft.derivatives.ph_mu_*)
+    if ge_enable and params.ge_model != "openvsp":
+        # the correlation scales lift and induced drag, never the moments: relative to free air on
+        # its own, relative to the sweep's floor and only below it in the hybrid (CPU reference)
+        from falcons.aircraft.derivatives import ph_mu_d, ph_mu_l
         hb = h.abs() / span
         tr, ar = params.taper_ratio, params.aspect_ratio
-        ml = 1.0 + (1.0 - 2.25 * (tr ** 0.00273 - 0.997) * (ar ** 0.717 + 13.6)) \
-            * (288.0 * hb ** 0.787 * torch.exp(-9.14 * hb ** 0.327)) / ar ** 0.882
-        md = (1.0 - (1.0 - 0.157 * max(0.0, tr ** 0.775 - 0.373) * max(0.0, ar ** 0.417 - 1.27))
-              * torch.exp(-4.74 * hb ** 0.814)) - hb * hb * torch.exp(-3.88 * hb ** 0.758)
-        CD = CD + k_ind * CL * CL * (md * ml * ml - 1.0)
+        ml = _ph_mu_l(hb, tr, ar)
+        dd = _ph_mu_d(hb, tr, ar) * ml * ml
+        if params.ge_model == "hybrid":
+            hb_f = float(params.hc[0]) * mac / span
+            ml_f = float(ph_mu_l(hb_f, tr, ar))
+            dd_f = float(ph_mu_d(hb_f, tr, ar)) * ml_f * ml_f
+            below = hb < hb_f
+            ml = torch.where(below, ml / ml_f, torch.ones_like(ml))
+            dd = torch.where(below, dd / dd_f, torch.ones_like(dd))
+        CD = CD + k_ind * CL * CL * (dd - 1.0)
         CL = CL * ml
     return CD, CS, CL, Cl, Cm, Cn
 

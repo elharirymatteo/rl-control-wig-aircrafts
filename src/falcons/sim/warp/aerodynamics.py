@@ -455,7 +455,7 @@ def compute_all_coeffs(AP: AerodynamicsParametersStruct,
     i = int(AP.n_heights - 2)
     w = wp.float32(1.0)
     k_ind = AP.k_ind_free
-    if ge_enable and AP.ge_model == 0:            # the measured sweep; PH acts on free air below
+    if ge_enable and AP.ge_model != 1:            # the sweep (openvsp, hybrid); PH acts on free air
         i, w = ge_bracket(h / mac, AP.hc, AP.n_heights)
         k_ind = AP.k_ind[i] * (1.0 - w) + AP.k_ind[i + 1] * w
 
@@ -483,11 +483,19 @@ def compute_all_coeffs(AP: AerodynamicsParametersStruct,
           + ge_coef(AP, _CN_RUD, i, w) * rudder
           + ge_coef(AP, _CN_P, i, w) * p_hat + ge_coef(AP, _CN_R, i, w) * r_hat)
 
-    if ge_enable and AP.ge_model == 1:            # Phillips-Hunsaker: lift and induced drag only
-        hb = wp.abs(h) / span
+    # The correlation scales lift and the induced drag k C_L^2, never the moments: relative to free
+    # air on its own (ge_model 1), relative to the sweep's floor and only below it in the hybrid
+    # (ge_model 2). Mirrors the CPU reference.
+    hb = wp.abs(h) / span
+    hb_floor = AP.hc[0] * mac / span
+    if ge_enable and (AP.ge_model == 1 or (AP.ge_model == 2 and hb < hb_floor)):
         ml = ph_mu_l(hb, AP.ph_taper, AP.ph_aspect)
-        md = ph_mu_d(hb, AP.ph_taper, AP.ph_aspect)
-        C_D = C_D + k_ind * C_L * C_L * (md * ml * ml - 1.0)
+        dd = ph_mu_d(hb, AP.ph_taper, AP.ph_aspect) * ml * ml
+        if AP.ge_model == 2:
+            ml_f = ph_mu_l(hb_floor, AP.ph_taper, AP.ph_aspect)
+            ml = ml / ml_f
+            dd = dd / (ph_mu_d(hb_floor, AP.ph_taper, AP.ph_aspect) * ml_f * ml_f)
+        C_D = C_D + k_ind * C_L * C_L * (dd - 1.0)
         C_L = C_L * ml
 
     # free-air pair, straight off AP.free -- the diagnostic, not part of the dynamics
