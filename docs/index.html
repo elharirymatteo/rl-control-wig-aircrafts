@@ -691,7 +691,7 @@ footer.site .frame { display: flex; flex-wrap: wrap; justify-content: space-betw
 <section class="cover">
   <div class="frame">
     <div>
-      <p class="lede">FALCON-S is a GPU-parallel, six-degree-of-freedom simulator and controller benchmark for fixed-wing aircraft flying close to the ground. It models <em>ground effect</em>, actuator and sensor dynamics and Dryden turbulence across five airframes, and drives reinforcement learning (PPO, SAC, TD3) and classical control (LQR, MPPI) through one command interface and one plant, so a comparison measures the controller and not the task encoding.</p>
+      <p class="lede">FALCON-S is a GPU-parallel, six-degree-of-freedom simulator and controller benchmark for fixed-wing aircraft flying close to the ground. It models <em>ground effect</em>, actuator and sensor dynamics and Dryden turbulence across four airframes, and drives reinforcement learning (PPO, SAC, TD3) and classical control (LQR, MPPI) through one command interface and one plant, so a comparison measures the controller and not the task encoding.</p>
       <p class="authors">
         <b>Anonymous authors</b>
         <span class="aff">Paper under double-blind review. Code, checkpoints and results are in the anonymized repository.</span>
@@ -705,7 +705,7 @@ footer.site .frame { display: flex; flex-wrap: wrap; justify-content: space-betw
           Code <span class="soon" style="color:inherit;opacity:.7">anonymized</span></a>
         <a class="btn" href="https://anonymous.4open.science/r/rl-control-wig-aircrafts-1D52/checkpoints/" target="_blank" rel="noopener">
           <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4.5 8 1.5l5.5 3v7L8 14.5l-5.5-3z M2.5 4.5 8 7.5l5.5-3 M8 7.5v7" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>
-          63 checkpoints</a>
+          Checkpoints</a>
         <a class="btn" href="#cite">
           <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 4h4v4H5c0 2 1 3 2 3.5M9 4h4v4h-2c0 2 1 3 2 3.5" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>
           BibTeX</a>
@@ -800,7 +800,7 @@ footer.site .frame { display: flex; flex-wrap: wrap; justify-content: space-betw
     <div class="tbl-wrap" style="margin-top:18px">
       <table class="data" id="rp-table" aria-label="Published results for the selected cell"></table>
     </div>
-    <p class="tbl-note" id="rp-note">The replay shows the median run of each cell by bank RMSE: of five training seeds for PPO, SAC and TD3, and of five sampling draws for MPPI. The LQR is deterministic and flown once. The table gives the published interquartile mean and its 95&nbsp;% bootstrap interval across all runs.</p>
+    <p class="tbl-note" id="rp-note">The replay shows the median run of each cell by bank RMSE: of five seeds for PPO, SAC and TD3, of five sampling draws for MPPI; the LQR is flown once. The table gives the IQM and its 95&nbsp;% interval over all runs.</p>
   </div>
 </section>
 
@@ -810,14 +810,14 @@ footer.site .frame { display: flex; flex-wrap: wrap; justify-content: space-betw
     <header class="sec-head">
       <p class="placard"><span class="ref">Benchmark</span><span>Altitude · attitude · ground effect · robustness</span></p>
       <h2>What the benchmark measures</h2>
-      <p class="lede">Every cell runs on identical conditions: the same airframe model, the same actuator and sensor models, the same reference. Learned methods are pooled over <strong>five training seeds</strong>, MPPI over <strong>repeated sampling draws</strong>. Every error is the <strong>interquartile mean</strong> over the surviving episodes with a 95&nbsp;% bootstrap interval in brackets, and survival is a rate with its interval, so a cell never hides the runs it dropped.</p>
+      <p class="lede">Every cell flies the same airframe, actuator and sensor models and the same reference. Learned methods pool <strong>five training seeds</strong>, MPPI repeated sampling draws. Errors are the <strong>interquartile mean</strong> over surviving episodes with a 95&nbsp;% bootstrap interval, and survival is reported with its own interval, so no cell hides the runs it lost.</p>
     </header>
 
     <!-- altitude -->
     <div class="sub-head" id="altitude" style="margin-top:0;border-top:0;padding-top:0">
       <p class="placard"><span class="ref">Task 1</span><span>Altitude acquisition and hold</span></p>
       <h3>Reach a commanded altitude, then stay there</h3>
-      <p class="lede">Each episode starts 12 to 18 m above or below a commanded altitude between 20 and 100 m, and every controller follows the same rate-limited reference. <strong>Survival</strong> counts episodes that end without a crash or a stall. <strong>Acquisition</strong> counts those that also reach the target and hold it within 1 m.</p>
+      <p class="lede">Each episode starts 12 to 18 m above or below a target between 20 and 100 m, and every controller follows the same rate-limited reference. <strong>Survival</strong>: no crash or stall. <strong>Acquisition</strong>: the target is reached and held within 1 m.</p>
     </div>
 
     <div class="panel">
@@ -842,20 +842,15 @@ footer.site .frame { display: flex; flex-wrap: wrap; justify-content: space-betw
       </div>
       <div class="chart" id="al-chart"></div>
       <div class="alt-legend" id="al-legend"></div>
-      <p class="tbl-note">Illustrative single episodes, not the scored protocol (the table below scores 200 episodes per seed or sampling draw, 1,000 per learned cell). Flown for this page with the shipped checkpoints and the benchmark's own environment and reference: first training seed for the learned policies, sampler seed 0 for MPPI. The dashed line is the commanded reference, ramping at 2 m/s, and the shaded band is the ±1 m capture tolerance.</p>
+      <p class="tbl-note">Single illustrative episodes flown with the shipped checkpoints (first seed; MPPI sampler seed 0). Dashed: the reference, ramping at 2 m/s. Shaded: the ±1 m capture band.</p>
     </div>
 
     <div class="tbl-wrap" style="margin-top:18px">
       <table class="data" id="alt-table" aria-label="Altitude acquisition and hold results"></table>
     </div>
-    <p class="tbl-note">Survival and acquisition are rates over every episode of the cell with a 95&nbsp;% interval; errors are the interquartile mean over the surviving episodes, pooled across five training seeds (learned) or three sampling sweeps (MPPI), with a hierarchical bootstrap interval. The LQR is a deterministic law swept once. Learned policies and MPPI are scored on the GPU plant and the LQR on the CPU reference plant, validated to single-step parity.</p>
+    <p class="tbl-note">Learned cells pool five seeds × 200 episodes and MPPI three sampling sweeps; the LQR is deterministic and swept once. Learned policies and MPPI fly the GPU plant, the LQR the CPU reference plant, held to single-step parity.</p>
 
-    <ul class="findings">
-      <li><b><span class="m" style="background:var(--c-ppo)"></span>PPO acquires every episode on both airframes.</b>All 1,000 per airframe. SAC drops 3–4&nbsp;% of its episodes, and TD3 on the Ranger survives every one yet acquires only 68&nbsp;%, with an interval of 30 to 98&nbsp;% across seeds.</li>
-      <li><b><span class="m" style="background:var(--c-sac)"></span>Where they survive, SAC and TD3 settle tighter than PPO.</b>SAC holds 0.009&nbsp;m on the V7 and 0.003&nbsp;m on the Ranger, against 0.267&nbsp;m and 0.011&nbsp;m for PPO.</li>
-      <li><b><span class="m" style="background:var(--c-lqr)"></span>The LQR is the most precise regulator.</b>3&nbsp;×&nbsp;10⁻⁴&nbsp;m on the V7 and round-off on the Ranger: on a constant reference the task is the linear regulation problem its gains solve. It also overshoots most, 1.5 and 1.1&nbsp;m.</li>
-      <li><b><span class="m" style="background:var(--c-mppi)"></span>MPPI acquires 99–100&nbsp;% with the smallest overshoot.</b>0.18 and 0.34&nbsp;m, at a settled error of 5 to 10&nbsp;cm. Its cost tracks the reference climb rate over a 2&nbsp;s preview.</li>
-    </ul>
+    <ul class="findings"><!-- FINDINGS:altitude --></ul>
 
     <figure class="plate" style="margin-top:clamp(28px,4vw,44px)">
       <div class="ctrl-row" style="margin-bottom:4px">
@@ -866,38 +861,33 @@ footer.site .frame { display: flex; flex-wrap: wrap; justify-content: space-betw
         </div>
       </div>
       <div class="sheet"><img id="av-img" src="assets/img/altitude-ppo.webp" width="1430" height="839" loading="lazy" alt="Altitude sequence figure for the selected policy on both airframes: commanded against achieved altitude, the tracking error over 256 Monte Carlo episodes, and elevator and throttle traces."></div>
-      <figcaption><b>A sequence of targets.</b> Each new altitude target is released only once the current one is held. One row per airframe: commanded against achieved altitude for several episodes, the median absolute error over 256 Monte Carlo episodes with its 10–90&nbsp;% band against the ±1&nbsp;m capture band, and the elevator and throttle of one episode. Elevator activity stays confined to the transients; the throttle carries the trim between them.</figcaption>
+      <figcaption><b>A sequence of targets.</b> Each new target is released once the current one is held. Per airframe: commanded and achieved altitude, the median error over 256 episodes with its 10–90&nbsp;% band, and the elevator and throttle of one episode.</figcaption>
     </figure>
 
     <!-- attitude -->
     <div class="sub-head" id="attitude">
       <p class="placard"><span class="ref">Task 2</span><span>Attitude-command tracking</span></p>
       <h3>Four maneuvers, bank error in degrees</h3>
-      <p class="lede">Each stream is generated from its own airframe's envelope, so a maneuver name means a comparable difficulty, not a comparable geometry. Each cell gives the bank-angle RMSE as the IQM over the surviving runs with its 95&nbsp;% interval, the time spent inside the ±8.6° band, and how many runs departed the envelope. Select a cell to fly it above.</p>
+      <p class="lede">Each command stream comes from its own airframe's envelope, so a maneuver name means a comparable difficulty, not a comparable geometry. A cell gives the bank RMSE over surviving runs, the time inside the ±8.6° band and the runs that departed. Select a cell to fly it above.</p>
     </div>
     <div class="heat" id="heat"></div>
     <div class="heat-key"><span>lower error</span><i></i><span>higher error (log scale)</span><span class="b"></span><span>best in column</span></div>
 
-    <ul class="findings">
-      <li><b><span class="m" style="background:var(--c-mppi)"></span>MPPI is the most accurate executor on every cell.</b>0.2 to 1.2° on the V7 and 0.2 to 0.4° on the Ranger, with no departures.</li>
-      <li><b><span class="m" style="background:var(--c-ppo)"></span>PPO tracks every cell within 0.4 to 2.5°.</b>Two of its five seeds depart the V7 helix.</li>
-      <li><b><span class="m" style="background:var(--c-sac)"></span>SAC and TD3 did not learn the V7 attitude task.</b>Their own evaluation during training survives 0.1 to 4&nbsp;% of episodes, and here they depart 19 and 20 of 20 runs. On the Ranger they stay in the envelope at 4.6 to 7.3°.</li>
-      <li><b><span class="m" style="background:var(--c-lqr)"></span>The LQR departs where the stream leaves its envelope.</b>It holds the Ranger to 1.6 to 2.0°, but the V7 circle and figure-of-eight command 36° of bank, past the 30° its level-trim gains reach.</li>
-    </ul>
+    <ul class="findings"><!-- FINDINGS:attitude --></ul>
 
     <figure class="plate" style="margin-top:clamp(28px,4vw,44px)">
       <div class="sheet"><img src="assets/img/maneuver-facet-v7.webp" width="1430" height="1100" loading="lazy" alt="Bank tracking on the Airship V7, rows circle, figure-of-eight, helix and s-turn, columns LQR, MPPI, PPO, SAC and TD3, each with commanded bank dashed and the tolerance band shaded."></div>
-      <figcaption><b>How each method fails.</b> Bank tracking on the Airship V7, one run per executor (LQR, MPPI, PPO, SAC, TD3), faceted because on shared axes the SAC and TD3 traces cover the other three. MPPI and PPO hold every stream. The LQR departs the 36° circle and figure-of-eight, past its 30° envelope, and holds the helix and s-turn. SAC and TD3 oscillate about the command until they leave the envelope, within seconds on most streams.</figcaption>
+      <figcaption><b>Bank tracking on the Airship V7.</b> One run per executor, one row per maneuver; commanded bank dashed, tolerance band shaded.</figcaption>
     </figure>
     <figure class="plate" style="margin-top:clamp(20px,3vw,32px)">
       <div class="sheet"><img src="assets/img/attitude-exec.webp" width="1430" height="605" loading="lazy" alt="Ground tracks over commanded bank angles for the Airship V7 and the Volantex Ranger, coloured by achieved bank, and the three command channels of the steepest sustained turn."></div>
-      <figcaption><b>The command interface.</b> PPO ground tracks over a fan of commanded bank angles, coloured by achieved bank, and the three channels of one steep turn (−45° on the V7, −27° on the Ranger) held for 30&nbsp;s before levelling out and climbing at 1&nbsp;m/s. In the turn the V7 sinks below its commanded climb rate while the Ranger holds it; both trade airspeed for the climb that follows.</figcaption>
+      <figcaption><b>The command interface.</b> PPO ground tracks over a fan of commanded bank angles, coloured by achieved bank, and the three command channels of one steep turn held for 30&nbsp;s before levelling out and climbing at 1&nbsp;m/s.</figcaption>
     </figure>
 
     <div class="panel" id="lqr-envelope" style="margin-top:clamp(20px,3vw,32px)">
       <div class="panel-head"><h4>How far the LQR can bank · one constant-bank turn per angle</h4></div>
       <div class="tbl-wrap"><table class="data" id="lqr-table" aria-label="LQR bank error against commanded bank angle"></table></div>
-      <p class="tbl-note">Bank RMSE of a constant-bank turn at each commanded angle, held for 1.3 turn periods (at most 120&nbsp;s); a cell is inside the envelope when the run survives and holds the ±8.6° band for 90&nbsp;% of the time. The gains are linearized about level trim: the Ranger holds every bank to 45° within 2.4°, while the V7 departs from 35°, which is why it leaves the 36° circle and figure-of-eight streams.</p>
+      <p class="tbl-note">Bank RMSE of a constant-bank turn at each commanded angle, held for 1.3 turn periods (at most 120&nbsp;s). A cell is inside the envelope when the run survives and holds the ±8.6° band 90&nbsp;% of the time.<!-- OBS:lqr_envelope --></p>
     </div>
 
     <!-- ground effect -->
@@ -928,27 +918,27 @@ footer.site .frame { display: flex; flex-wrap: wrap; justify-content: space-betw
         <div class="chart-legend">
           <span style="color:var(--accent)"><i></i>trim, no controller</span>
           <span style="color:var(--c-ppo)"><i class="dash"></i>policy holding the band</span>
-          <span style="color:var(--fg-dim)"><i class="dot2"></i>lifting-line theory</span>
+          <span style="color:var(--fg-dim)"><i class="dot2"></i>fixed angle of attack</span>
         </div>
         <div class="prose" style="margin-top:1rem;font-size:0.95rem">
-          <p>The correction acts on the induced drag only. The measured saving exceeds the prediction because the prediction holds the lift coefficient fixed while the aircraft re-trims: ground effect raises lift, the trim angle of attack falls and drag falls further. With the V7 angle of attack frozen at its out-of-ground-effect <span class="num">2.14°</span> the drag at h/b = 0.25 is <span class="num">63.9 N</span>, against <span class="num">60.6 N</span> when it re-trims to <span class="num">1.68°</span>.</p>
-          <p>Under the PPO altitude policy the saving is larger still, <span class="num">21.2&nbsp;%</span> on the V7 at h/b = 0.25, and the settled altitude error stays below <span class="num">0.21 m</span> on the V7 and <span class="num">0.03 m</span> on the Ranger with the correction on or off. The A0S is offered 12.1&nbsp;% at h/b = 0.25, but its altitude policy does not hold any band below h/b = 2.</p>
+          <p>The dotted line is the drag change at a fixed angle of attack; the solid line lets the aircraft re-trim.</p>
+          <!-- OBS:ground_effect -->
         </div>
       </div>
     </div>
 
     <div class="panel" id="ge-training" style="margin-top:clamp(20px,3vw,32px)">
       <div class="panel-head"><h4>Does training in ground effect matter? · 2 × 2 of train GE × evaluation GE</h4></div>
-      <p class="tbl-note" style="margin-top:0">Each PPO altitude policy (five seeds) is fine-tuned twice on a near-ground band, h/b 0.20 to 0.46, once with the ground-effect correction on and once with it off; everything else is shared. Each child is then flown with the correction on and off, 200 episodes per cell and seed, and again in a 30 m band as a forgetting check.</p>
+      <p class="tbl-note" style="margin-top:0">Each PPO altitude policy is fine-tuned twice on a near-ground band, h/b 0.20 to 0.46: once with the correction on, once with it off. Each child is flown with the correction on and off, 200 episodes per cell and seed, and again in a 30 m band to check forgetting.</p>
       <div class="tbl-wrap"><table class="data" id="get-table" aria-label="Ground-effect training study"></table></div>
-      <p class="tbl-note"><b>On the V7, ground effect is a skill the policy learns.</b> Deployed with the correction on, the child fine-tuned without it holds 0.54&nbsp;m against 0.21&nbsp;m, and the child fine-tuned with it survives only 26&nbsp;% of episodes once the correction is switched off: it flies on the extra lift. <b>On the Ranger the gain is generic</b>: fine-tuning with the correction helps in both worlds and the interaction term is −0.007&nbsp;m. Error is the IQM over surviving episodes, five seeds pooled.</p>
+      <p class="tbl-note"><!-- OBS:ge_training --></p>
     </div>
 
     <!-- robustness -->
     <div class="sub-head" id="robustness">
       <p class="placard"><span class="ref">Robustness</span><span>PPO attitude executor · four disturbance families</span></p>
-      <h3>Noise is free, latency is decisive, wind ends runs</h3>
-      <p class="lede">The PPO executor (five seeds) flies all four maneuvers under one disturbance family at a time, at three severities set in physical units, with 100 noise or gust realizations per seed, maneuver and severity. A disturbance corrupts what the policy sees or commands; every metric comes from the true simulator state.</p>
+      <h3>What breaks the attitude executor</h3>
+      <p class="lede">The PPO executor flies the four maneuvers under one disturbance family at a time, at three severities in physical units, 100 realisations per seed, maneuver and severity. Disturbances corrupt what the policy sees or commands; every metric comes from the true state. A second executor, trained with a random action and observation delay of up to 100&nbsp;ms per episode, flies the same grid.</p>
     </div>
     <div class="two">
       <div class="panel"><div class="panel-head"><h4>Airship V7</h4></div><div class="chart" id="rb-v7"></div></div>
@@ -972,28 +962,24 @@ footer.site .frame { display: flex; flex-wrap: wrap; justify-content: space-betw
         </tbody>
       </table>
     </div>
-    <ul class="findings">
-      <li><b>Sensor noise costs nothing.</b>Bank error holds at 2.3° on the V7 and moves from 1.4 to 1.5° on the Ranger across the whole grid.</li>
-      <li><b>The V7 executor has no latency margin.</b>Every run departs under any delay, from the mildest 20&nbsp;ms. The instability grows with the dead-time: a single run departs after about 20&nbsp;s at 10&nbsp;ms, 4.6&nbsp;s at 20&nbsp;ms and 2.4&nbsp;s at 50&nbsp;ms.</li>
-      <li><b>The Ranger absorbs latency, and wind ends V7 runs.</b>The Ranger loses nothing to either delay up to the medium grid and survives the severe one at 9.6 to 11.8°. On the V7, turbulence cuts survival from 0.82 to 0.11 while the survivors still track at 2.3 to 2.4°.</li>
-    </ul>
+    <ul class="findings"><!-- FINDINGS:robustness --></ul>
 
     <!-- training -->
     <div class="sub-head" id="training">
-      <p class="placard"><span class="ref">Training</span><span>63 runs · five seeds per cell</span></p>
+      <p class="placard"><span class="ref">Training</span><span>62 runs · five seeds per cell</span></p>
       <h3>How the shipped policies were trained</h3>
-      <p class="lede">Every learned row above pools five independent training runs. PPO trains for 1.5&nbsp;×&nbsp;10⁸ environment steps in about 6.5 minutes; SAC and TD3 for 3&nbsp;×&nbsp;10⁷ steps in about 66 and 26 minutes (median per run, one RTX 4090).</p>
+      <p class="lede">Every learned row pools five independent training runs. PPO trains for 1.5&nbsp;×&nbsp;10⁸ environment steps, SAC and TD3 for 3&nbsp;×&nbsp;10⁷.<!-- TIMES: median wall clock per run, results/train_timings.tsv --></p>
     </div>
     <figure class="plate">
       <div class="sheet"><img src="assets/img/learning-curves.webp" width="1430" height="880" loading="lazy" alt="Learning curves: periodic evaluation error against environment steps for PPO, SAC and TD3 on both airframes and both tasks, interquartile mean over five seeds with a 95 % bootstrap band."></div>
-      <figcaption><b>Learning curves.</b> Interquartile mean over the five seeds with a 95&nbsp;% bootstrap band, against environment steps (log scale). Altitude task: settled altitude RMSE of the periodic evaluation; attitude task: bank RMSE. Open circles mark evaluations in which fewer than half of the episodes survived. On the V7 attitude task SAC and TD3 never reach that threshold.</figcaption>
+      <figcaption><b>Learning curves.</b> Interquartile mean over the five seeds with a 95&nbsp;% bootstrap band, against environment steps (log scale). Altitude task: settled altitude RMSE of the periodic evaluation; attitude task: bank RMSE. Open circles mark evaluations in which fewer than half of the episodes survived.</figcaption>
     </figure>
 
     <!-- ranking -->
     <div class="sub-head" id="ranking">
       <p class="placard"><span class="ref">Synthesis</span><span>Ranks from the altitude and attitude tables</span></p>
-      <h3>No method orders consistently</h3>
-      <p class="lede">Rank the five controllers on four criteria taken from the two tables and the order still changes from one to the next. MPPI is the most accurate attitude executor and acquires almost every altitude episode, but settles 5 to 10&nbsp;cm off. The LQR is the most precise regulator and acquires every episode, yet departs the V7 maneuvers that bank past 30°. SAC settles tighter than PPO where it survives, and departs the V7 attitude task. PPO is the most consistent rather than the most accurate.</p>
+      <h3>How the five controllers rank</h3>
+      <p class="lede">Each controller ranked on four criteria from the altitude and attitude tables.<!-- OBS:ranking --></p>
     </div>
     <div class="panel">
       <div class="chart" id="bump"></div>
@@ -1008,7 +994,7 @@ footer.site .frame { display: flex; flex-wrap: wrap; justify-content: space-betw
     <header class="sec-head">
       <p class="placard"><span class="ref">Simulator</span><span>Environment module</span></p>
       <h2>Inside the plant</h2>
-      <p class="lede">Full 6-DoF rigid-body dynamics in a north-east-down frame, with OpenVSP-derived aerodynamics, semi-empirical ground effect, actuator dynamics, configurable sensors and Dryden turbulence. The CPU reference, PyTorch and Warp backends implement the same equations, validated to <strong>single-step parity</strong>.</p>
+      <p class="lede">Full 6-DoF rigid-body dynamics in a north-east-down frame, with OpenVSP derivative aerodynamics and ground effect, actuator dynamics, configurable sensors and Dryden turbulence. The CPU reference, PyTorch and Warp backends implement the same equations, validated to <strong>single-step parity</strong>.</p>
     </header>
 
     <div class="phys">
@@ -1021,13 +1007,13 @@ footer.site .frame { display: flex; flex-wrap: wrap; justify-content: space-betw
       <div>
         <h4>Aerodynamics</h4>
         <div class="eq"><math display="block"><mrow><msub><mi mathvariant="bold">F</mi><mtext>aero</mtext></msub><mo>=</mo><mover><mi>q</mi><mo>¯</mo></mover><mi>S</mi><msup><mrow><mo>[</mo><mo>−</mo><msub><mi>C</mi><mi>D</mi></msub><mo>,</mo><msub><mi>C</mi><mi>Y</mi></msub><mo>,</mo><mo>−</mo><msub><mi>C</mi><mi>L</mi></msub><mo>]</mo></mrow><mo>⊤</mo></msup><mo>,</mo><mspace width="0.5em"/><mover><mi>q</mi><mo>¯</mo></mover><mo>=</mo><mfrac><mn>1</mn><mn>2</mn></mfrac><mi>ρ</mi><msubsup><mi>V</mi><mi>a</mi><mn>2</mn></msubsup></mrow></math></div>
-        <p>Coefficients in α, β and surface deflection, computed from each airframe's OpenVSP model and fitted to polynomials that run inside GPU kernels.</p>
+        <p>27 stability and control derivatives from a VSPAERO analysis of each airframe's OpenVSP model, linear about its run point, with a quadratic induced-drag term. Episodes end past the linear range of α; there is no stall model.</p>
       </div>
       <div>
         <h4>Ground effect</h4>
-        <div class="eq"><math display="block"><mrow><msub><mi>C</mi><mi>L</mi></msub><mo>=</mo><msubsup><mi>C</mi><mi>L</mi><mi>∞</mi></msubsup><mo>(</mo><mn>1</mn><mo>+</mo><msub><mi>μ</mi><mi>L</mi></msub><mo>)</mo></mrow></math>
-        <math display="block"><mrow><msub><mi>C</mi><mi>D</mi></msub><mo>=</mo><msubsup><mi>C</mi><mi>D</mi><mi>∞</mi></msubsup><mo>(</mo><mn>1</mn><mo>−</mo><msub><mi>μ</mi><mi>D</mi></msub><mo>)</mo><msup><mrow><mo>(</mo><mn>1</mn><mo>+</mo><msub><mi>μ</mi><mi>L</mi></msub><mo>)</mo></mrow><mn>2</mn></msup></mrow></math></div>
-        <p>Phillips–Hunsaker lifting-line corrections, with μ<sub>L</sub>, μ<sub>D</sub> functions of h/b, taper and aspect ratio. Closed form, so no panel method or CFD in the loop.</p>
+        <div class="eq"><math display="block"><mrow><mi>c</mi><mo>=</mo><msup><mi>c</mi><mi>∞</mi></msup><mo>+</mo><mi>Δ</mi><mi>c</mi><mo>(</mo><mi>h</mi><mo>/</mo><mover><mi>c</mi><mo>¯</mo></mover><mo>)</mo></mrow></math>
+        <math display="block"><mrow><msub><mi>C</mi><mi>L</mi></msub><mo>(</mo><mi>h</mi><mo>)</mo><mo>=</mo><msub><mi>C</mi><mi>L</mi></msub><mo>(</mo><msub><mi>h</mi><mi>f</mi></msub><mo>)</mo><mfrac><mrow><msub><mi>μ</mi><mi>L</mi></msub><mo>(</mo><mi>h</mi><mo>)</mo></mrow><mrow><msub><mi>μ</mi><mi>L</mi></msub><mo>(</mo><msub><mi>h</mi><mi>f</mi></msub><mo>)</mo></mrow></mfrac><mo>,</mo><mspace width="0.4em"/><mi>h</mi><mo>&lt;</mo><msub><mi>h</mi><mi>f</mi></msub></mrow></math></div>
+        <p>VSPAERO repeats the analysis with a ground plane at eleven heights, h/b 0.2 to 2, so every derivative moves with height, pitching moment included. Below the lowest height h<sub>f</sub> the Phillips–Hunsaker lifting-line correlation continues lift and drag. Where both apply they agree within 3&nbsp;% on lift and drag; either can be selected alone.</p>
       </div>
       <div>
         <h4>Actuators</h4>
@@ -1124,7 +1110,7 @@ footer.site .frame { display: flex; flex-wrap: wrap; justify-content: space-betw
   <div class="frame">
     <header class="sec-head">
       <p class="placard"><span class="ref">Airframes</span><span>JSON configuration · OpenVSP geometry</span></p>
-      <h2>Five airframes, from a 1.6 m RC plane to a light aircraft</h2>
+      <h2>Four airframes, from a 1.6 m RC plane to a light aircraft</h2>
       <p class="lede">Each airframe is a JSON file: geometry, mass and inertia, control-surface layout, propulsion and sensors. The benchmark tables use the <strong>Airship V7</strong>, the ground-effect prototype the framework was built around, and the <strong>Volantex Ranger</strong>, a widely flown electric RC airframe. Wingspans below are drawn to one scale.</p>
     </header>
     <div class="fleet" id="fleet"></div>
@@ -1152,8 +1138,8 @@ footer.site .frame { display: flex; flex-wrap: wrap; justify-content: space-betw
 <span class="p">$ </span>docker build -t falcons .
 <span class="p">$ </span>docker run --rm --gpus all falcons</pre></div>
       <div class="code"><header><span class="placard">Train and evaluate</span><button class="copy" type="button" data-copy="c2">Copy</button></header>
-<pre id="c2"><span class="c"># 3 algorithms × 2 tasks × 5 airframes × any seed</span>
-<span class="p">$ </span>scripts/train_seeds.sh          <span class="c"># the 63 shipped runs</span>
+<pre id="c2"><span class="c"># 3 algorithms × 2 tasks × 4 airframes × any seed</span>
+<span class="p">$ </span>scripts/train_seeds.sh          <span class="c"># the 62 shipped runs</span>
 <span class="p">$ </span>falcons train --algo ppo --task altitude \
     --plane Airship_V7 --seed 0
 
@@ -1174,7 +1160,7 @@ footer.site .frame { display: flex; flex-wrap: wrap; justify-content: space-betw
 <span class="c"># re-fly everything, diff against results/</span></pre></div>
     </div>
     <div class="repro">
-      <div><b>Deterministic rows return bit-identical.</b>Every learned-policy row and every LQR row of the shipped tables re-flies to the same bits from the 63 checkpoints.</div>
+      <div><b>Deterministic rows return bit-identical.</b>Every learned-policy row and every LQR row of the shipped tables re-flies to the same bits from the shipped checkpoints.</div>
       <div><b>Sampling planners are gated by their spread.</b>An MPPI cell is a draw, so each metric carries its own standard deviation and a re-run must land within 3σ of the shipped value.</div>
       <div><b>One inner loop.</b><code>eval</code> is the loop <code>benchmark</code> composes, so a cell printed by <code>eval</code> is the cell that lands in the table.</div>
     </div>
@@ -1236,7 +1222,7 @@ footer.site .frame { display: flex; flex-wrap: wrap; justify-content: space-betw
   };
   const PLANE = {
     Airship_V7: "Airship V7", Airship_A0S: "Airship A0S", Volantex_Ranger: "Volantex Ranger",
-    Navion: "Navion", Cirrus_SR22: "Cirrus SR22",
+    Navion: "Navion",
   };
   const MAN = { circle: "Circle", figure8: "Figure-8", helix: "Helix", sturn: "S-turn" };
   const MANS = ["circle", "figure8", "helix", "sturn"];
@@ -1700,7 +1686,7 @@ footer.site .frame { display: flex; flex-wrap: wrap; justify-content: space-betw
         ["Thrust, correction on", `${tr.thrust_ge_on.toFixed(tr.thrust_ge_on < 5 ? 2 : 1)} N`, (tr.thrust_ge_on / tr.thrust_ge_off) * 100, "var(--accent)"],
         ["Change at trim", fmt.pct(tr.delta_thrust_pct), Math.abs(tr.delta_thrust_pct) / 30 * 100, "var(--accent)"],
         ["Change, policy holding the band", held ? fmt.pct(cl.delta_thrust_pct) : "not held", held ? Math.abs(cl.delta_thrust_pct) / 30 * 100 : 0, "var(--c-ppo)"],
-        ["Lifting-line prediction", fmt.pct(tr.theory_pct), Math.abs(tr.theory_pct) / 30 * 100, "var(--fg-dim)"],
+        ["Drag change at fixed α", fmt.pct(tr.theory_pct), Math.abs(tr.theory_pct) / 30 * 100, "var(--fg-dim)"],
         ["Trim angle of attack", `${tr.alpha_ge_on.toFixed(2)}°`, null, null, `off ${tr.alpha_ge_off.toFixed(2)}°`],
       ];
       read.innerHTML = rows.map(([k2, v, w, c, extra]) => `<div class="r"><span>${k2}</span><span class="n${v === "not held" ? " na" : ""}">${v}</span>${w == null ? `<span class="num" style="font-size:.78rem;color:var(--fg-faint)">${extra}</span>` : `<span class="gb" style="--w:${Math.min(100, w).toFixed(1)}%;--c:${c}"></span>`}</div>`).join("");
@@ -1973,13 +1959,13 @@ footer.site .frame { display: flex; flex-wrap: wrap; justify-content: space-betw
   // ── fleet ───────────────────────────────────────────────────────────────────────────────
   function fleet(F) {
     const host = $("#fleet");
-    const TRIM = { Airship_V7: 28, Airship_A0S: 18, Volantex_Ranger: 15, Navion: 45, Cirrus_SR22: 94 };
+    const TRIM = { Airship_V7: 28, Airship_A0S: 18, Volantex_Ranger: 15, Navion: 45 };
     const ROLE = {
       Airship_V7: "Ground-effect prototype · benchmark", Airship_A0S: "Ground-effect prototype",
-      Volantex_Ranger: "Electric RC · benchmark", Navion: "Piston light aircraft", Cirrus_SR22: "Piston light aircraft",
+      Volantex_Ranger: "Electric RC · benchmark", Navion: "Piston light aircraft",
     };
     const maxSpan = d3.max(Object.values(F), (f) => f.span);
-    for (const p of ["Volantex_Ranger", "Airship_A0S", "Airship_V7", "Navion", "Cirrus_SR22"]) {
+    for (const p of ["Volantex_Ranger", "Airship_A0S", "Airship_V7", "Navion"]) {
       const f = F[p];
       const row = el("div", { class: "ship" });
       row.appendChild(el("div", { class: "nm" }, `${PLANE[p]}<small>${ROLE[p]}</small>`));

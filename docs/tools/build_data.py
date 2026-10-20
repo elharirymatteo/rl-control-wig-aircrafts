@@ -26,7 +26,7 @@ RES = ROOT / "results"
 OUT = ROOT / "docs" / "data"
 
 PLANES = ["Airship_V7", "Volantex_Ranger"]
-ALL_PLANES = ["Airship_V7", "Airship_A0S", "Volantex_Ranger", "Navion", "Cirrus_SR22"]
+ALL_PLANES = ["Airship_V7", "Airship_A0S", "Volantex_Ranger", "Navion"]
 MANEUVERS = ["circle", "figure8", "helix", "sturn"]
 METHODS = ["lqr", "mppi", "ppo", "sac", "td3"]
 REPLAY_HZ = 10

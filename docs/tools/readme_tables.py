@@ -21,7 +21,7 @@ PLANES = ["Airship_V7", "Volantex_Ranger"]
 METHODS = ["PPO", "SAC", "TD3", "LQR", "MPPI"]
 MANEUVERS = [("circle", "Circle"), ("figure8", "Figure-8"), ("helix", "Helix"), ("sturn", "S-turn")]
 PRETTY = {"Airship_V7": "Airship V7", "Volantex_Ranger": "Volantex Ranger",
-          "Airship_A0S": "Airship A0S", "Navion": "Navion", "Cirrus_SR22": "Cirrus SR22"}
+          "Airship_A0S": "Airship A0S", "Navion": "Navion"}
 DIST = [("obs_noise", "Sensor noise"), ("sensor_delay", "Sensor delay"),
         ("action_delay", "Action delay"), ("wind", "Turbulence")]
 
@@ -146,12 +146,12 @@ def t_ground_effect():
                      fmt(f(r["delta_thrust_pct"]), 1), fmt(f(r["theory_pct"]), 1),
                      fmt(f(c["delta_thrust_pct"]), 1) if c and c.get("hold_valid") in ("1", "True") else "–",
                      auto(f(c["rmse_ge_on"])) if c else "–", auto(f(c["rmse_ge_off"])) if c else "–"])
-    return table(["Airframe", "h/b", "ΔT trim [%]", "ΔT theory [%]", "ΔT under PPO [%]",
+    return table(["Airframe", "h/b", "ΔT trim [%]", "ΔC_D at fixed α [%]", "ΔT under PPO [%]",
                   "Error GE on [m]", "Error GE off [m]"], body)
 
 
-def t_robustness():
-    rs = rows("robustness.csv")
+def t_robustness(name="robustness.csv"):
+    rs = rows(name)
     if not rs:
         return None
     cell = by([r for r in rs if r["method"] == "PPO"], "aircraft", "disturbance", "severity")
@@ -236,9 +236,49 @@ def t_throughput():
     return table(["Backend", "Parallel envs", "Env-steps / s"], body, ["---", "--:", "--:"])
 
 
+def t_ge_models():
+    """The two ground-effect sources where both apply: the trimmed thrust saving at h/b = 0.25,
+    the lift and drag ratios at the operating point at h/b = 0.3, and the pitching-moment change
+    only the sweep carries."""
+    co = rows("ge_models/coefficients_run_point.csv")
+    tv, tp = rows("ge_models/ge_trim_openvsp.csv"), rows("ge_models/ge_trim_phillips_hunsaker.csv")
+    if not (co and tv and tp):
+        return None
+    def at(rs, ac, hb):
+        return next(r for r in rs if r.get("plane", r.get("aircraft")) == ac
+                    and float(r["h_over_b"]) == hb)
+    body = []
+    for ac in ("Airship_V7", "Airship_A0S", "Volantex_Ranger", "Navion"):
+        a, b = at(tv, ac, 0.25), at(tp, ac, 0.25)
+        c3, c2 = at(co, ac, 0.3), at(co, ac, 0.2)
+        body.append([PRETTY[ac], f"{f(a['delta_thrust_pct']):+.1f}", f"{f(b['delta_thrust_pct']):+.1f}",
+                     f"{f(c3['CL_ratio_vsp']):.3f}", f"{f(c3['CL_ratio_ph']):.3f}",
+                     f"{f(c3['CD_ratio_vsp']):.3f}", f"{f(c3['CD_ratio_ph']):.3f}",
+                     f"{f(c2['dCm_vsp']):+.3f}"])
+    return table(["Airframe", "ΔT OpenVSP [%]", "ΔT P–H [%]", "C<sub>L</sub> ratio OpenVSP",
+                  "C<sub>L</sub> ratio P–H", "C<sub>D</sub> ratio OpenVSP", "C<sub>D</sub> ratio P–H",
+                  "ΔC<sub>m</sub> OpenVSP"], body)
+
+
+def t_training():
+    """Median wall clock per run on one RTX 4090, evaluation included."""
+    p = RES / "train_timings.tsv"
+    if not p.exists():
+        return None
+    with open(p) as fh:
+        rs = [r for r in csv.DictReader(fh, delimiter="\t")
+              if r["plane"] in PLANES and r.get("rc", "0") == "0"]
+    med = lambda a, t: sorted(int(r["seconds"]) for r in rs if r["algo"] == a and r["task"] == t)
+    cell = lambda v: f"{v[len(v) // 2] / 60:.0f} min" if v else "–"
+    body = [[a.upper(), cell(med(a, "altitude")), cell(med(a, "attitude"))] for a in ("ppo", "sac", "td3")]
+    return table(["Algorithm", "Altitude task (median per run)", "Attitude task (median per run)"], body)
+
+
 TABLES = dict(altitude=t_altitude, maneuvers=t_maneuvers, ground_effect=t_ground_effect,
-              robustness=t_robustness, ge_training=t_ge_training, lqr_envelope=t_lqr_envelope,
-              jsbsim=t_jsbsim, throughput=t_throughput)
+              robustness=t_robustness,
+              robustness_dr=lambda: t_robustness("latency_dr/robustness.csv"),
+              ge_training=t_ge_training, ge_models=t_ge_models, lqr_envelope=t_lqr_envelope,
+              jsbsim=t_jsbsim, throughput=t_throughput, training=t_training)
 
 
 def main():
