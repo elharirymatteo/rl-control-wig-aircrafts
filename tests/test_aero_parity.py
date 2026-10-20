@@ -18,6 +18,7 @@ import pytest
 
 from conftest import ONLINE_PLANES
 from falcons.aircraft.config import AircraftConfig
+from falcons.aircraft.derivatives import GE_MODELS, ph_mu_d, ph_mu_l
 from falcons.aircraft.params import DerivativeAeroParameters
 from falcons.sim.aero_contract import AeroInputs
 from falcons.sim.cpu.physics.aerodynamics import DerivativeAerodynamics
@@ -118,8 +119,11 @@ def test_ground_effect_raises_lift_near_the_ground(ac):
 @pytest.mark.cuda
 @pytest.mark.parametrize("ac", ONLINE_PLANES)
 @pytest.mark.parametrize("ge", [True, False])
-def test_warp_matches_the_cpu_reference(ac, ge):
+@pytest.mark.parametrize("ge_model", GE_MODELS)
+def test_warp_matches_the_cpu_reference(ac, ge, ge_model, monkeypatch):
     import warp as wp
+
+    monkeypatch.setenv("FALCONS_GE_MODEL", ge_model)
 
     from falcons.aircraft.params import AerodynamicsParametersStruct
     from falcons.sim.warp.aerodynamics import compute_all_coeffs
@@ -193,8 +197,11 @@ def test_torch_table_cache_survives_one_airframe_replacing_another():
 
 
 @pytest.mark.parametrize("ac", ONLINE_PLANES)
-def test_torch_matches_the_cpu_reference(ac):
+@pytest.mark.parametrize("ge_model", GE_MODELS)
+def test_torch_matches_the_cpu_reference(ac, ge_model, monkeypatch):
     import torch
+
+    monkeypatch.setenv("FALCONS_GE_MODEL", ge_model)
 
     from falcons.sim.torch.altitude import torch_coefficients
 
@@ -211,3 +218,38 @@ def test_torch_matches_the_cpu_reference(ac):
         ref = np.array([build_cpu(ac, ge_enable=ge).coefficients(c).as_array() for c in cases])
         np.testing.assert_allclose(np.stack([g.numpy() for g in got], axis=-1), ref,
                                    rtol=1e-11, atol=1e-13)
+
+
+# ─── the optional Phillips-Hunsaker ground-effect model ─────────────────────────────────────────
+
+def _run_point(ac, h_over_b, ge_model, monkeypatch):
+    """Free-air and in-ground-effect coefficients at the VSPAERO run point, h/b above ground."""
+    monkeypatch.setenv("FALCONS_GE_MODEL", ge_model)
+    cfg = AircraftConfig(ac).load()
+    p = DerivativeAeroParameters.from_config(cfg)
+    span = cfg["vehicle_params"]["wing"]["span"]
+    u = AeroInputs(alpha=p.alpha_run, beta=0.0, v=p.v_ref, elevator=p.de_run, aileron=0.0,
+                   rudder=0.0, p=0.0, q=0.0, r=0.0, h=h_over_b * span)
+    return p, build_cpu(ac, ge_enable=False).coefficients(u), build_cpu(ac).coefficients(u)
+
+
+@pytest.mark.parametrize("ac", ONLINE_PLANES)
+def test_phillips_hunsaker_scales_lift_and_induced_drag_only(ac, monkeypatch):
+    p, free, ige = _run_point(ac, 0.25, "phillips_hunsaker", monkeypatch)
+    ml = ph_mu_l(0.25, p.taper_ratio, p.aspect_ratio)
+    md = ph_mu_d(0.25, p.taper_ratio, p.aspect_ratio)
+    assert ige.CL == pytest.approx(free.CL * ml, rel=1e-12)
+    assert ige.CD == pytest.approx(free.CD + p.k_ind_free * free.CL ** 2 * (md * ml * ml - 1.0),
+                                   rel=1e-12)
+    assert (ige.CS, ige.Cl, ige.Cm, ige.Cn) == (free.CS, free.Cl, free.Cm, free.Cn)
+
+
+@pytest.mark.parametrize("ac", ONLINE_PLANES)
+@pytest.mark.parametrize("h_over_b", [0.3, 0.5, 1.0, 2.0])
+def test_the_two_models_agree_on_lift_and_drag_inside_the_sweep(ac, h_over_b, monkeypatch):
+    """Inside the measured sweep the lifting-line correlation and the VSPAERO ground image give the
+    same change in lift and drag at the run point, within 3 % (the paper's claim)."""
+    _, free, vsp = _run_point(ac, h_over_b, "openvsp", monkeypatch)
+    _, _, ph = _run_point(ac, h_over_b, "phillips_hunsaker", monkeypatch)
+    assert vsp.CL / free.CL == pytest.approx(ph.CL / free.CL, rel=0.03)
+    assert vsp.CD / free.CD == pytest.approx(ph.CD / free.CD, rel=0.03)

@@ -74,7 +74,7 @@ def torch_coefficients(params, span, mac, ge_enable, device, dtype,
     da = alpha - params.alpha_run
     de = elevator - params.de_run
 
-    if ge_enable:
+    if ge_enable and params.ge_model == "openvsp":
         # Bracket h/c in the sweep and interpolate the increment. Clamping the weight is what
         # makes this correct at both ends: held below the sweep, and exactly zero increment at
         # the top row and above, which is free air.
@@ -104,6 +104,16 @@ def torch_coefficients(params, span, mac, ge_enable, device, dtype,
     Cm = (g("CMm_Total") + g("CMm_Alpha") * da + g("CMm_elevator") * de + g("CMm_q") * q_hat)
     Cn = (g("CMn_Beta") * beta + g("CMn_aileron") * aileron + g("CMn_rudder") * rudder
           + g("CMn_p") * p_hat + g("CMn_r") * r_hat)
+    if ge_enable and params.ge_model == "phillips_hunsaker":
+        # lift and induced drag only, on the free-air set (falcons.aircraft.derivatives.ph_mu_*)
+        hb = h.abs() / span
+        tr, ar = params.taper_ratio, params.aspect_ratio
+        ml = 1.0 + (1.0 - 2.25 * (tr ** 0.00273 - 0.997) * (ar ** 0.717 + 13.6)) \
+            * (288.0 * hb ** 0.787 * torch.exp(-9.14 * hb ** 0.327)) / ar ** 0.882
+        md = (1.0 - (1.0 - 0.157 * max(0.0, tr ** 0.775 - 0.373) * max(0.0, ar ** 0.417 - 1.27))
+              * torch.exp(-4.74 * hb ** 0.814)) - hb * hb * torch.exp(-3.88 * hb ** 0.758)
+        CD = CD + k_ind * CL * CL * (md * ml * ml - 1.0)
+        CL = CL * ml
     return CD, CS, CL, Cl, Cm, Cn
 
 

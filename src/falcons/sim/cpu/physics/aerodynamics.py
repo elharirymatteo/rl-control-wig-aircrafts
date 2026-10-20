@@ -29,7 +29,7 @@ import numpy as np
 
 # From `derivatives`, not `params`: params.py defines the warp structs and imports warp at
 # module scope, and the CPU reference plant must not need a GPU stack to run.
-from falcons.aircraft.derivatives import IDX, DerivativeAeroParameters
+from falcons.aircraft.derivatives import IDX, DerivativeAeroParameters, ph_mu_d, ph_mu_l
 from falcons.sim.aero_contract import AeroCoefs, AeroInputs
 from .atmosphere import AtmosphereStateMixin
 
@@ -65,8 +65,8 @@ class DerivativeAerodynamics:
         Below the sweep the increment is HELD, not extrapolated. That floor is real -- the sweep
         starts at h/c = 2.07 (h/b = 0.20) -- so deeper ground effect is not modelled.
         """
-        if not self.ge_enable:
-            return self.p.free, self.p.k_ind_free
+        if not self.ge_enable or self.p.ge_model != "openvsp":
+            return self.p.free, self.p.k_ind_free      # Phillips-Hunsaker acts on free air
         hc = np.clip(h / self.mac, self.p.hc[0], self.p.hc[-1])
         # One interpolation over the stacked table; np.interp is per-column, so this is the
         # vectorised form of the 27 scalar interp1 calls the model was specified as.
@@ -109,6 +109,15 @@ class DerivativeAerodynamics:
         C_n = (c[IDX["CMn_Beta"]] * u.beta + c[IDX["CMn_aileron"]] * u.aileron
                + c[IDX["CMn_rudder"]] * u.rudder
                + c[IDX["CMn_p"]] * p_hat + c[IDX["CMn_r"]] * r_hat)
+
+        if self.ge_enable and self.p.ge_model == "phillips_hunsaker":
+            # lift and induced drag only (the correlation has no moments); k C_L^2 is the induced
+            # part of the free-air drag, scaled by mu_d mu_l^2 at fixed lift
+            hb = u.h / self.span
+            ml = ph_mu_l(hb, self.p.taper_ratio, self.p.aspect_ratio)
+            md = ph_mu_d(hb, self.p.taper_ratio, self.p.aspect_ratio)
+            C_D = C_D + k_ind * C_L * C_L * (md * ml * ml - 1.0)
+            C_L = C_L * ml
 
         return AeroCoefs(CD=C_D, CS=C_S, CL=C_L, Cl=C_l, Cm=C_m, Cn=C_n)
 

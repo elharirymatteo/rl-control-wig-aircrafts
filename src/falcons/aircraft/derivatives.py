@@ -8,6 +8,7 @@ check. `params.py` re-exports everything here, so every existing import site sti
 wanted.
 """
 import dataclasses
+import os
 from typing import Any, Dict
 
 import numpy as np
@@ -46,6 +47,25 @@ def _induced_drag_factor(cd_alpha, cl_total, cl_alpha):
     return cd_alpha / denom
 
 
+GE_MODELS = ("openvsp", "phillips_hunsaker")
+
+
+def ph_mu_l(h_over_b, taper_ratio, aspect_ratio):
+    """Phillips & Hunsaker (2013) lift factor C_L,IGE / C_L at height over span h/b."""
+    hb = np.abs(h_over_b)
+    return 1.0 + (1.0 - 2.25 * (taper_ratio ** 0.00273 - 0.997) * (aspect_ratio ** 0.717 + 13.6)) \
+        * (288.0 * hb ** 0.787 * np.exp(-9.14 * hb ** 0.327)) / aspect_ratio ** 0.882
+
+
+def ph_mu_d(h_over_b, taper_ratio, aspect_ratio):
+    """Phillips & Hunsaker (2013) induced-drag factor at fixed lift; the correction scales the
+    induced drag k C_L^2 by mu_d mu_l^2 and leaves the parasitic remainder alone."""
+    hb = np.abs(h_over_b)
+    t1 = 1.0 - (1.0 - 0.157 * max(0.0, taper_ratio ** 0.775 - 0.373)
+                * max(0.0, aspect_ratio ** 0.417 - 1.27)) * np.exp(-4.74 * hb ** 0.814)
+    return t1 - hb * hb * np.exp(-3.88 * hb ** 0.758)
+
+
 @dataclasses.dataclass
 class DerivativeAeroParameters:
     """OpenVSP linear derivative set for one airframe, plus its measured ground-effect surface.
@@ -70,6 +90,13 @@ class DerivativeAeroParameters:
     """
     derivatives_file: str = ""
     ge_derivatives_file: str = ""
+    # Which ground-effect model the plants apply. "openvsp" (default): the measured height sweep
+    # below. "phillips_hunsaker": the closed-form lifting-line correlation of Phillips & Hunsaker
+    # (2013) on the free-air coefficients -- lift and induced drag only, from the wing's aspect
+    # and taper ratios, at any height. FALCONS_GE_MODEL overrides the airframe's choice.
+    ge_model: str = "openvsp"
+    aspect_ratio: float = 0.0
+    taper_ratio: float = 0.0
 
     def __post_init__(self):
         d = self._read_named(self.derivatives_file)
@@ -145,9 +172,17 @@ class DerivativeAeroParameters:
     @classmethod
     def from_config(cls, config: Dict[str, Any]):
         aero_params = config.get("aero_params", {})
+        wing = config["vehicle_params"]["wing"]
+        ge_model = os.environ.get("FALCONS_GE_MODEL") or aero_params.get("ge_model", "openvsp")
+        if ge_model not in GE_MODELS:
+            raise ValueError(f"ge_model {ge_model!r} is not one of {GE_MODELS}")
         return cls(
             derivatives_file=aero_params["derivatives_file"],
             ge_derivatives_file=aero_params["ge_derivatives_file"],
+            ge_model=ge_model,
+            # b^2/S from the geometry, not the JSON's aspect_ratio field, which no physics read
+            aspect_ratio=float(wing["span"]) ** 2 / float(wing["area"]),
+            taper_ratio=float(wing["taper_ratio"]),
         )
 
     def as_warp_struct(self, device: str = "cuda"):
@@ -165,4 +200,7 @@ class DerivativeAeroParameters:
         s.alpha_run = wp.float32(self.alpha_run)
         s.de_run = wp.float32(self.de_run)
         s.n_heights = wp.int32(len(self.hc))
+        s.ge_model = wp.int32(GE_MODELS.index(self.ge_model))
+        s.ph_aspect = wp.float32(self.aspect_ratio)
+        s.ph_taper = wp.float32(self.taper_ratio)
         return s

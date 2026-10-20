@@ -39,6 +39,9 @@ class AerodynamicsParametersStruct:
     alpha_run: wp.float32                     # operating point [rad]
     de_run: wp.float32                        # operating point [rad]
     n_heights: wp.int32
+    ge_model: wp.int32                        # index into derivatives.GE_MODELS: 0 openvsp, 1 PH
+    ph_aspect: wp.float32                     # Phillips-Hunsaker geometry: b^2 / S
+    ph_taper: wp.float32
 
 @wp.struct
 class PropulsionParametersStruct:
@@ -59,9 +62,8 @@ class WingParameters:
     span: float = 5.00
     area: float = 3.32
     mac: float = 0.620
-    # aspect_ratio and taper_ratio no longer enter the physics: they fed the empirical
-    # ground-effect correlation, which the measured OpenVSP height sweep replaced. Kept because
-    # they describe the wing, not because anything reads them.
+    # taper_ratio feeds the optional Phillips-Hunsaker ground-effect model (ge_model); its aspect
+    # ratio is b^2/S from span and area, so this aspect_ratio field enters no physics.
     aspect_ratio: float = 7.53
     taper_ratio: float = 0.39
 
