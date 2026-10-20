@@ -84,8 +84,28 @@ RECIPES = {
         "Airship_V7":      dict(qvz=1.0, qz=1.0, raero=900.0, rmotor=1.0),
         "Volantex_Ranger": dict(qvz=9.0, qz=5.5, raero=1300.0, rmotor=1.0),
     },
+    # The attitude executor flies one collective throttle, the interface every executor gets, so
+    # both attitude variants tie the motors (TIED). "attitude" keeps the hold weights. The V7 also
+    # has "attitude_steep", scheduled in above ~25 deg of commanded bank: its polynomial
+    # aerodynamics lose static pitch stability above alpha ~ 5.5 deg, which a turn steeper than
+    # ~30 deg reaches, and the level design, with no alpha feedback, lets that mode diverge into a
+    # stall. The steep design weights body w (~ V alpha) 1000x. The Ranger is pitch-stable at every
+    # alpha and needs no steep design.
+    "attitude": {
+        "Airship_V7":      dict(qvz=0.1, qz=5.0, raero=30000.0, rmotor=50.0),
+        "Volantex_Ranger": dict(qvz=1.0, qz=5.0, raero=1000.0, rmotor=100.0),
+    },
+    "attitude_steep": {
+        "Airship_V7":      dict(qvz=100.0, qz=5.0, raero=30000.0, rmotor=50.0),
+    },
 }
-OUTPUT = {"hold": "{p}_K_LQR.csv", "acquisition": "{p}_K_LQR_acquisition.csv"}
+OUTPUT = {"hold": "{p}_K_LQR.csv", "acquisition": "{p}_K_LQR_acquisition.csv",
+          "attitude": "{p}_K_LQR_attitude.csv", "attitude_steep": "{p}_K_LQR_attitude_steep.csv"}
+# Variants designed with every motor driven by one collective command. The attitude executor flies
+# the benchmark's four-channel interface (elevator, aileron, rudder, ONE throttle); a K designed for
+# independent motors yaws a twin-motor airframe with differential thrust it cannot apply there, and
+# in a steep turn that request comes back as full collective throttle and the turn diverges.
+TIED = {"attitude", "attitude_steep"}
 
 
 def build_env(plane):
@@ -175,9 +195,19 @@ def plant(plane):
     return env, A, B, rb0
 
 
-def solve(env, A, B, rb0, qvz, qz, raero, rmotor):
-    """K and the closed-loop eigenvalues for one (Q, R)."""
+def solve(env, A, B, rb0, qvz, qz, raero, rmotor, tied=False):
+    """K and the closed-loop eigenvalues for one (Q, R). `tied` designs for one collective motor
+    command (the motor columns of B summed) and expands K back to one identical row per motor, so
+    the controller consumes it unchanged."""
+    if tied is True:
+        n_mo = env.n_motors
+        Bt = np.hstack([B[:, :n_mo].sum(axis=1, keepdims=True), B[:, n_mo:]])
+        Kt, _ = solve(env, A, Bt, rb0, qvz, qz, raero, rmotor, tied="inner")
+        K = np.vstack([np.repeat(Kt[:1], n_mo, axis=0), Kt[1:]])
+        return K, np.linalg.eigvals(A - B @ K)
     q, r = weights(env, qvz, qz, raero, rmotor)
+    if tied == "inner":
+        r = np.concatenate([r[:1], r[env.n_motors:]])
     int0 = rb0 + RB_DIM
     # zero-weight pure integrators make (A, Q) undetectable and the Riccati solve ill-posed: the
     # integral states whose k_i is zero, and the x position (untracked, and no force depends on it)
@@ -193,19 +223,21 @@ def solve(env, A, B, rb0, qvz, qz, raero, rmotor):
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("plane", choices=PLANES + ["all"])
-    ap.add_argument("--variant", choices=["hold", "acquisition", "both"], default="both")
+    ap.add_argument("--variant", choices=["hold", "acquisition", "attitude", "attitude_steep", "both", "all"],
+                    default="all", help="both = hold + acquisition; all adds attitude")
     ap.add_argument("--check", action="store_true",
                     help="compare against the stored CSV and write nothing")
     a = ap.parse_args(argv)
     planes = PLANES if a.plane == "all" else [a.plane]
-    variants = ["hold", "acquisition"] if a.variant == "both" else [a.variant]
+    variants = {"both": ["hold", "acquisition"], "all": ["hold", "acquisition", "attitude", "attitude_steep"]}.get(
+        a.variant, [a.variant])
     worst = 0.0
     for p in planes:
         env, A, B, rb0 = plant(p)
         for v in variants:
             if p not in RECIPES[v]:
                 print(f"{p} {v}: no recipe -- skipped"); continue
-            K, eig = solve(env, A, B, rb0, **RECIPES[v][p])
+            K, eig = solve(env, A, B, rb0, **RECIPES[v][p], tied=v in TIED)
             out = AircraftConfig(p).dir / OUTPUT[v].format(p=p)
             status = "stable" if eig.real.max() < 1e-9 else "UNSTABLE"
             if a.check:
