@@ -12,7 +12,6 @@ from falcons.aircraft.config import AircraftConfig
 from falcons.controllers.lqr.control import LQR_Control
 
 G = 9.81
-SCHEDULE = np.radians([20.0, 30.0])     # commanded bank [rad] over which the gains blend
 
 
 def _euler_to_quat_wfirst(roll, pitch, yaw):
@@ -42,12 +41,9 @@ class LQRAttitudeExecutor:
         # The executor flies one collective throttle, as every executor does here. A twin-motor
         # airframe's hold gains yaw it with differential thrust, which this interface cannot apply;
         # its attitude gains are designed with the motors tied (scripts/derive_lqr_gains.py).
-        # Where a steep-turn design exists the gain is scheduled on the commanded bank: the level
-        # design below SCHEDULE[0], the steep one above SCHEDULE[1], linear in between.
-        d = AircraftConfig(aircraft).dir
-        level, steep = d / f"{aircraft}_K_LQR_attitude.csv", d / f"{aircraft}_K_LQR_attitude_steep.csv"
-        self.K_level = np.loadtxt(level, delimiter=",") if level.exists() else self.lqr.K_LQR
-        self.K_steep = np.loadtxt(steep, delimiter=",") if steep.exists() else self.K_level
+        tied = AircraftConfig(aircraft).dir / f"{aircraft}_K_LQR_attitude.csv"
+        if tied.exists():
+            self.lqr.K_LQR = np.loadtxt(tied, delimiter=",")
         self.env = env
         self.dt = dt
         self.nm = self.lqr.n_motors
@@ -129,9 +125,7 @@ class LQRAttitudeExecutor:
         ref = np.concatenate([np.zeros(self.lqr.n_aero_states + self.nm),
                               vel_ref, angvel_ref, np.zeros(3), pos_ref, np.zeros(3)])
 
-        w = np.clip((abs(phi_c) - SCHEDULE[0]) / (SCHEDULE[1] - SCHEDULE[0]), 0.0, 1.0)
-        K = (1.0 - w) * self.K_level + w * self.K_steep
-        u = self.u_trim - K @ (x - ref)
+        u = self.u_trim - self.lqr.K_LQR @ (x - ref)
         self.prev_u = u.copy()
         na = self.lqr.normalize_actuator_commands(u)           # [motors..., elev, ail, rud]
 

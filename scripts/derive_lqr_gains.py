@@ -49,8 +49,8 @@ forward, so x error grows without bound and any weight on it saturates the actua
     PYTHONPATH=src python scripts/derive_lqr_gains.py all                 # write every CSV
     PYTHONPATH=src python scripts/derive_lqr_gains.py Airship_V7 --variant hold --check
                                                                           # compare, write nothing
-Navion and Cirrus_SR22 carry the development repository's placeholder weights; no benchmark
-flies an LQR on them, and their gains are written only if the linearized closed loop is stable.
+The Navion carries the development repository's placeholder weights; no benchmark flies an LQR on
+it, and its gains are written only if the linearized closed loop is stable.
 """
 import argparse
 import os
@@ -62,7 +62,7 @@ import scipy.linalg
 from falcons.aircraft.config import AircraftConfig
 from falcons.controllers.lqr.control import LQR_Control
 
-PLANES = ["Airship_V7", "Volantex_Ranger", "Navion", "Cirrus_SR22"]
+PLANES = ["Airship_V7", "Volantex_Ranger", "Navion"]
 TRIM_ALTITUDE = 60.0   # [m] linearization altitude, out of ground effect on every airframe
 RB_DIM = 12            # linear velocity, angular velocity, quaternion vector part, position
 EPS_RB = np.array([1e-2, 1e-2, 1e-2,     # linear velocity [m/s]
@@ -78,34 +78,28 @@ RECIPES = {
         "Airship_V7":      dict(qvz=0.1, qz=5.0, raero=30000.0, rmotor=50.0),
         "Volantex_Ranger": dict(qvz=1.0, qz=5.0, raero=1000.0, rmotor=100.0),
         "Navion":          dict(qvz=0.1, qz=100.0, raero=1.0, rmotor=100.0),     # placeholder
-        "Cirrus_SR22":     dict(qvz=0.1, qz=100.0, raero=1.0, rmotor=100.0),     # placeholder
     },
     "acquisition": {
         "Airship_V7":      dict(qvz=1.0, qz=1.0, raero=900.0, rmotor=1.0),
-        "Volantex_Ranger": dict(qvz=9.0, qz=5.5, raero=1300.0, rmotor=1.0),
+        # raero 1300 on the polynomial plant; on the derivative plant that elevator price winds
+        # the altitude integrators up against a saturated elevator in every climb (0 of 25 climbs
+        # survived), and 300 regulates climbs and descents alike
+        "Volantex_Ranger": dict(qvz=9.0, qz=5.5, raero=300.0, rmotor=1.0),
     },
     # The attitude executor flies one collective throttle, the interface every executor gets, so
-    # both attitude variants tie the motors (TIED). "attitude" keeps the hold weights. The V7 also
-    # has "attitude_steep", scheduled in above ~25 deg of commanded bank: its polynomial
-    # aerodynamics lose static pitch stability above alpha ~ 5.5 deg, which a turn steeper than
-    # ~30 deg reaches, and the level design, with no alpha feedback, lets that mode diverge into a
-    # stall. The steep design weights body w (~ V alpha) 1000x. The Ranger is pitch-stable at every
-    # alpha and needs no steep design.
+    # the attitude variant ties the motors (TIED).
     "attitude": {
         "Airship_V7":      dict(qvz=0.1, qz=5.0, raero=30000.0, rmotor=50.0),
         "Volantex_Ranger": dict(qvz=1.0, qz=5.0, raero=1000.0, rmotor=100.0),
     },
-    "attitude_steep": {
-        "Airship_V7":      dict(qvz=100.0, qz=5.0, raero=30000.0, rmotor=50.0),
-    },
 }
 OUTPUT = {"hold": "{p}_K_LQR.csv", "acquisition": "{p}_K_LQR_acquisition.csv",
-          "attitude": "{p}_K_LQR_attitude.csv", "attitude_steep": "{p}_K_LQR_attitude_steep.csv"}
+          "attitude": "{p}_K_LQR_attitude.csv"}
 # Variants designed with every motor driven by one collective command. The attitude executor flies
 # the benchmark's four-channel interface (elevator, aileron, rudder, ONE throttle); a K designed for
 # independent motors yaws a twin-motor airframe with differential thrust it cannot apply there, and
 # in a steep turn that request comes back as full collective throttle and the turn diverges.
-TIED = {"attitude", "attitude_steep"}
+TIED = {"attitude"}
 
 
 def build_env(plane):
@@ -223,13 +217,13 @@ def solve(env, A, B, rb0, qvz, qz, raero, rmotor, tied=False):
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("plane", choices=PLANES + ["all"])
-    ap.add_argument("--variant", choices=["hold", "acquisition", "attitude", "attitude_steep", "both", "all"],
+    ap.add_argument("--variant", choices=["hold", "acquisition", "attitude", "both", "all"],
                     default="all", help="both = hold + acquisition; all adds attitude")
     ap.add_argument("--check", action="store_true",
                     help="compare against the stored CSV and write nothing")
     a = ap.parse_args(argv)
     planes = PLANES if a.plane == "all" else [a.plane]
-    variants = {"both": ["hold", "acquisition"], "all": ["hold", "acquisition", "attitude", "attitude_steep"]}.get(
+    variants = {"both": ["hold", "acquisition"], "all": ["hold", "acquisition", "attitude"]}.get(
         a.variant, [a.variant])
     worst = 0.0
     for p in planes:

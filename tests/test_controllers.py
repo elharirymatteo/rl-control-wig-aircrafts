@@ -1,5 +1,5 @@
 """The controller/checkpoint loading surface: the LQR gain tables shipped beside each airframe, the
-39 policy checkpoints the benchmark scores, and the MPPI attitude executor built from a stream."""
+62 policy checkpoints the benchmark scores, and the MPPI attitude executor built from a stream."""
 from pathlib import Path
 
 import numpy as np, pytest, torch
@@ -10,29 +10,25 @@ from conftest import ONLINE_PLANES, requires_derivatives
 
 GOLD = Path(__file__).parent / "golden" / "lqr_gains"
 
-# One grep finds every gate the LQR refit must clear. See plan.md Phase 6.
-LQR_PENDING = "LQR gains were fitted to the polynomial plant; refit pending (plan.md Phase 6)"
-
 CELLS = [(a, t, p, s) for a in ALGOS for t in TASKS for p in ("Airship_V7", "Volantex_Ranger") for s in (0, 1, 2)]
 CELLS += [("ppo", "altitude", p, 0) for p in ("Airship_A0S", "Navion")]
 CELL_MARKS = [pytest.param(a, t, p, s, marks=requires_derivatives(p)) for a, t, p, s in CELLS]
 
 
-@pytest.mark.skip(reason=LQR_PENDING)
-def test_lqr_gains_identical_to_archive():
-    """Frozen, not deleted. The gains themselves are gone -- they linearised the polynomial plant
-    -- so there is nothing to compare against `tests/golden/lqr_gains/` until the LQR controller is
-    refitted to the derivative set. The archive stays as the record of what the old plant flew."""
+def test_lqr_gains_identical_to_golden():
+    """The hold gains are the ones scripts/derive_lqr_gains.py writes on the derivative plant
+    (tests/test_lqr_gains.py re-derives them); this pins the shipped files to the golden copies
+    without the slow solve."""
     for ac in ("Airship_V7", "Volantex_Ranger", "Navion"):
         new = np.loadtxt(AircraftConfig(ac).lqr_gains_path, delimiter=",")
         old = np.loadtxt(GOLD / f"{ac}_K_LQR.csv", delimiter=",")
         np.testing.assert_array_equal(new, old)
 
 
-def test_sixty_three_checkpoints_ship():
+def test_sixty_two_checkpoints_ship():
     # 5 seeds x {PPO, SAC, TD3} x {altitude, attitude} x {V7, Ranger}, plus PPO altitude on the
-    # other three airframes for the ground-effect sweep
-    assert len(list(CKPT_DIR.glob("*.pt"))) == 63
+    # other two airframes for the ground-effect sweep
+    assert len(list(CKPT_DIR.glob("*.pt"))) == 62
 
 
 @pytest.mark.cuda

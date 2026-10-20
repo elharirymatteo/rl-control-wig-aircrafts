@@ -48,7 +48,9 @@ class LQR_Control(CpuEnv):
         # matrix, so an experiment can evaluate a different tuning without mutating the repo's
         # committed gains.
         lqr_path = os.environ.get("LQR_GAINS_PATH") or self.airship.config_manager.lqr_gains_path
-        self.K_LQR = np.loadtxt(lqr_path, delimiter=',')  # LQR gain
+        # LQR gain; None until scripts/derive_lqr_gains.py has written one for this airframe
+        # (the derivation builds this controller for its plant before any gain exists)
+        self.K_LQR = np.loadtxt(lqr_path, delimiter=',') if lqr_path else None
         
         self.k_i = k_i  # Integral gain
         self.dt = self.airship.EP['dt']  # Simulation time step
