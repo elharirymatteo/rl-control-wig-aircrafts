@@ -88,14 +88,13 @@ class MPPIAltitude:
         aircraft = Aircraft(1, "cuda", config, save_history=False)
         aircraft.solver_type = 1
 
-        # Termination identical to the RL environments' check_termination_batch: ground contact
-        # of the wing, |alpha| > 1.5 x stall angle, or airspeed below 0.6 x the airframe's
+        # Termination identical to the RL environments' check_termination_batch: ground contact,
+        # |alpha| above the airframe's hard limit (alpha_max_deg), or airspeed below 0.6 x the
         # default airspeed (base_vel). The historical check stopped only at 4 x stall (2 x in the
         # kernel times 2 x at the call) and had no airspeed floor.
         base_vel = float(config_objects["default_initial_state"].linear_vel[0])
-        alpha_limit = float(1.5 * VP.stall_angle)            # stall_angle is in radians
+        alpha_limit = float(VP.alpha_max)                    # radians, the hard alpha gate
         va_min = 0.6 * base_vel
-        wing_cg_z = float(VP.WP.cg_offset_vector[2])
         term = wp.zeros(1, dtype=wp.int32, device="cuda")
         reason = wp.zeros(1, dtype=wp.int32, device="cuda")
 
@@ -238,11 +237,11 @@ class MPPIAltitude:
             # Check termination with the RL environments' own kernel and thresholds
             wp.launch(check_termination_batch, dim=1, inputs=[
                 aircraft._state["position"], aircraft._alpha, aircraft._Va,
-                wing_cg_z, alpha_limit, va_min, term, reason], device="cuda")
+                alpha_limit, va_min, term, reason], device="cuda")
             r = int(reason.numpy()[0])
             if r:
                 print(f"Simulation ended at step {step}: "
-                      f"{'crashed into the surface' if r == 1 else 'stall (alpha or airspeed)'}")
+                      f"{'crashed into the surface' if r == 1 else 'alpha or airspeed limit'}")
                 actual_steps = step + 1
                 break
             

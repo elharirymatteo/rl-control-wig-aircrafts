@@ -1,37 +1,30 @@
 {
   "name": "Airship_A0S",
   "vehicle_params": {
-    "mass": 11.2,
+    "mass": 11.5,
     "inertia_matrix": [
       [
-        2.867134431733256,
+        2.867,
         0.0,
-        0.908936020603816
+        -0.9089
       ],
       [
         0.0,
-        4.50169069702822,
+        4.502,
         0.0
       ],
       [
-        0.908936020603816,
+        -0.9089,
         0.0,
-        6.486039002081812
+        6.486
       ]
     ],
     "wing": {
-      "span": 2.76,
-      "area": 1.0,
-      "mac": 0.36,
-      "aspect_ratio": 7.618,
-      "taper_ratio": 0.39,
-      "induced_drag_k": 0.050904,
-      "induced_drag_source": "oswald_e0.82",
-      "cg_offset_vector": [
-        -0.09,
-        0.0,
-        0.0
-      ]
+      "span": 2.560,
+      "area": 0.852,
+      "mac": 0.364,
+      "aspect_ratio": 7.53,
+      "taper_ratio": 0.39
     },
     "actuator_system": {
       "aero_surfaces": {
@@ -192,12 +185,9 @@
     }
   },
   "aero_params": {
-    "type": "polynomial",
-    "poly_params_file": "A0_V8_poly_params_refit_corrected.csv",
-    "stall_angle_deg": 13.0,
-    "Clp": -0.4,
-    "Cmq": -10.0,
-    "Cnr": -0.25
+    "derivative_set": "openvsp",
+    "alpha_max_deg": 19.5,
+    "alpha_soft_deg": 13.0
   },
   "environment_params": {
     "g": 9.81,
@@ -224,7 +214,7 @@
       -1.0
     ],
     "linear_vel": [
-      13.0,
+      17.0,
       0.0,
       0.0
     ],

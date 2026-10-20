@@ -4,7 +4,7 @@ Both simulators fly the same zero-input free flight (controls at zero, throttle 
 attitude at the airframe's reference airspeed V0 and alpha = 2 deg, for a few seconds, from
 h0 = 1, 10 and 100 m. The JSBSim aircraft carries no ground-effect term (gen_jsbsim.py), so the
 FALCON-S plant is flown with its correction off, and once with it on at 1 m, where the two are
-meant to part company. Rate damping is off in FALCON-S for the same reason (validate.py).
+meant to part company. Both carry the derivative set's rate damping (CMl_p, CMm_q, CMn_r, ...).
 
     python tools/jsbsim_validate/gen_jsbsim.py --plane Airship_V7       # once per airframe
     python tools/jsbsim_validate/paper_table.py --planes Airship_V7 Volantex_Ranger

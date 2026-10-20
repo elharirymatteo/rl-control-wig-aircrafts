@@ -4,8 +4,10 @@ control at zero and the throttle shut, and report where the two disagree.
 
 Five checks, cheapest first, so that a failure in an early one explains the later ones:
 
-  1 coefficients   JSBSim's tables against the FALCON-S polynomial they were built from.
-                   Isolates table interpolation error from everything else.
+  1 coefficients   JSBSim's <function> blocks against the FALCON-S derivative set they were
+                   built from. The set is emitted as arithmetic, so both sides evaluate the same
+                   expression and this should agree to round-off. Anything larger is a
+                   transcription bug in gen_jsbsim.py.
   2 aero loads     body-frame aerodynamic force and moment at matched (alpha, beta, V).
                    Run at beta = 0 and at beta != 0: sideslip is where this tool found the
                    wind-to-body rotation carrying the wrong sign of beta, and the second column
@@ -14,9 +16,9 @@ Five checks, cheapest first, so that a failure in an early one explains the late
                    that FALCON-S's ground effect is inactive. Flown twice, at the plant's
                    configured step and at a refined one, because the plant's own time-step error
                    is first order and larger than anything else measured here.
-  4 ground effect  FALCON-S's lift and drag against JSBSim's over a height sweep. They part
-                   company below h/b ~ 1 by exactly what the model predicts: mu_l on lift, and
-                   mu_d mu_l^2 on the induced part k C_L^2 of the drag.
+  4 ground effect  FALCON-S's lift and drag against JSBSim's over a height sweep. JSBSim is
+                   given the free-air set, so the two part company below the top of the measured
+                   OpenVSP height sweep by exactly the increment that sweep records.
   5 rollout IGE    the same rollout started low. Divergence here is the ground-effect model
                    doing its job, not a failure.
 
@@ -30,7 +32,6 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-
 
 @contextlib.contextmanager
 def quiet():
@@ -91,7 +92,7 @@ def quat_to_euler_deg(q: np.ndarray) -> np.ndarray:
 
 
 def wrap_deg(difference: np.ndarray) -> np.ndarray:
-    """Angle differences into (-180, 180]. Alpha and psi both wrap during a tumble."""
+    """Angle differences into (-180, 180]. Alpha and psi can both wrap on a large excursion."""
     return (np.asarray(difference) + 180.0) % 360.0 - 180.0
 
 
@@ -153,25 +154,25 @@ def open_falcons(plane: str, gravity: float, ground_effect: bool = True):
     centimetre over a couple of seconds and would sit on top of everything this tool is trying
     to measure.
 
-    Rate damping is switched off: the JSBSim aircraft carries none (gen_jsbsim.py), so leaving it
-    on would measure the damping rather than the plant. Everything else is the default CPU plant,
-    which tests/test_plant_parity.py holds to the Warp plant step for step.
+    The plant is the default CPU plant, which tests/test_plant_parity.py holds to the Warp plant
+    step for step; its rate damping is part of the derivative set, which gen_jsbsim.py exports.
     """
     from falcons.sim.cpu.aircraft import Aircraft
     with quiet():
-        aircraft = Aircraft(plane, rate_damping=False, in_ground_effect=ground_effect)
+        aircraft = Aircraft(plane, in_ground_effect=ground_effect)
     aircraft.EP["g"] = gravity
     return aircraft
 
 
-def falcons_polynomial(plane: str):
-    """The plant's own aerodynamics object, for coefficients and ground-effect factors."""
+def falcons_aero(plane: str):
+    """The plant's own aerodynamics object, for coefficients and ground-effect ratios."""
     from falcons.aircraft.config import AircraftConfig
-    from falcons.sim.cpu.physics.aerodynamics import PolynomialAerodynamics
+    from falcons.aircraft.derivatives import DerivativeAeroParameters
+    from falcons.sim.cpu.physics.aerodynamics import DerivativeAerodynamics
     config = AircraftConfig(plane).load()
-    poly = pd.read_csv(config["aero_params"]["poly_params_file"])
-    aero = PolynomialAerodynamics(config["aero_params"], config["vehicle_params"],
-                                  config["environment_params"], poly)
+    wing = config["vehicle_params"]["wing"]
+    aero = DerivativeAerodynamics(DerivativeAeroParameters.from_config(config),
+                                  span=wing["span"], mac=wing["mac"])
     return aero, config
 
 
@@ -184,7 +185,7 @@ def falcons_aero_loads(coeffs: dict, Q: float, wing: dict, alpha: float, beta: f
     carry, and it can only catch the next one if this is a faithful copy.
     """
     S, b, c = wing["area"], wing["span"], wing["mac"]
-    D, Y, L = Q * S * coeffs["CD"], Q * S * coeffs["CY"], Q * S * coeffs["CL"]
+    D, Y, L = Q * S * coeffs["CD"], Q * S * coeffs["CS"], Q * S * coeffs["CL"]
     ca, sa, cb, sb = np.cos(alpha), np.sin(alpha), np.cos(beta), np.sin(beta)
     wind_to_body = np.array([[ca * cb, -ca * sb, -sa],
                              [sb, cb, 0.0],
@@ -199,19 +200,26 @@ def falcons_aero_loads(coeffs: dict, Q: float, wing: dict, alpha: float, beta: f
 # ---------------------------------------------------------------- checks
 
 # Which angle each coefficient is a function of, for the sweeps and the plots.
-COEFFICIENT_ANGLE = {"CD": "alpha", "CL": "alpha", "CMy": "alpha",
-                     "CY": "beta", "CMx": "beta", "CMz": "beta"}
+COEFFICIENT_ANGLE = {"CD": "alpha", "CL": "alpha", "Cm": "alpha",
+                     "CS": "beta", "Cl": "beta", "Cn": "beta"}
 
 
 def check_coefficients(fdm, aero, altitude: float, limit: float = 20.0,
                        step: float = 0.37) -> pd.DataFrame:
-    """Sweep each coefficient along the angle it depends on, table against polynomial.
+    """Sweep each coefficient along the angle it depends on, JSBSim against the plant.
 
-    The step is deliberately not a round number: landing on the table's own nodes would read
-    back the polynomial exactly and measure nothing. Sweeping rather than sampling at random
-    means the result can be plotted as two curves, where a table that had gone wrong anywhere
-    would be obvious instead of buried in scatter.
+    The step is deliberately not a round number. That mattered when the export was a table and
+    landing on its nodes would read the model back exactly; it is kept because the sweep is also
+    plotted, and an off-node step is the honest way to show a curve.
+
+    The comparison is now between two evaluations of the same linear expression, so agreement
+    should be at round-off. A visible difference here is a transcription error in the emitter --
+    a dropped term, a wrong sign, a degree/radian slip -- not interpolation.
+
+    Ground effect is off: the aircraft written for JSBSim carries the free-air set, and this
+    sweep is run at `altitude` well above the measured height sweep.
     """
+    from falcons.sim.aero_contract import aero_inputs
     angles = np.arange(-limit, limit + 1e-9, step)
     rows = []
     for sweep in ("alpha", "beta"):
@@ -220,27 +228,30 @@ def check_coefficients(fdm, aero, altitude: float, limit: float = 20.0,
             alpha, beta = np.radians([angle_deg if sweep == "alpha" else 0.0,
                                       angle_deg if sweep == "beta" else 0.0])
             jsbsim_ic(fdm, altitude, np.zeros(3), body_velocity(50.0, alpha, beta), np.zeros(3))
+            coeffs = aero.coefficients(aero_inputs(alpha, beta, 50.0, np.zeros(3), np.zeros(3),
+                                                   altitude))
             row = {"sweep": sweep, "angle_deg": angle_deg}
             for name in names:
-                reference = aero.get_coefficient(name, alpha, beta, np.zeros(3))
-                table = fdm[f"aero/coeff/{name}"]
+                reference = getattr(coeffs, name)
+                emitted = fdm[f"aero/coeff/{name}"]
                 row[f"{name}_falcons"] = reference
-                row[f"{name}_jsbsim"] = table
+                row[f"{name}_jsbsim"] = emitted
                 row[f"{name}_ref"] = reference
-                row[name] = table - reference          # the difference the statistics read
+                row[name] = emitted - reference        # the difference the statistics read
             rows.append(row)
     return pd.DataFrame(rows)
 
 
 def check_aero_loads(fdm, aero, config, altitude: float, beta_deg: float) -> pd.DataFrame:
+    from falcons.sim.aero_contract import aero_inputs
     wing = config["vehicle_params"]["wing"]
-    state = {"position": np.array([0.0, 0.0, -altitude])}
     rows = []
     for alpha_deg in np.arange(-12.0, 12.1, 2.0):
         alpha, beta = np.radians([alpha_deg, beta_deg])
         uvw = body_velocity(50.0, alpha, beta)
         jsbsim_ic(fdm, altitude, np.zeros(3), uvw, np.zeros(3))
-        coeffs = aero.get_coefficients_with_ground_effect(alpha, beta, np.zeros(3), state)
+        coeffs = aero.coefficients(
+            aero_inputs(alpha, beta, 50.0, np.zeros(3), np.zeros(3), altitude))._asdict()
         Q = 0.5 * fdm["atmosphere/rho-slugs_ft3"] * 515.378818 * np.dot(uvw, uvw)
         force, moment = falcons_aero_loads(coeffs, Q, wing, alpha, beta)
         jsb_force = np.array([fdm[f"forces/fb{ax}-aero-lbs"] for ax in "xyz"]) * LBS
@@ -259,23 +270,30 @@ def check_aero_loads(fdm, aero, config, altitude: float, beta_deg: float) -> pd.
 
 
 def check_ground_effect(fdm, aero, span: float) -> pd.DataFrame:
-    """FALCON-S lift and drag against JSBSim's, which has no ground effect, over height."""
+    """FALCON-S lift and drag against JSBSim's, which has no ground effect, over height.
+
+    Two ratios are reported per height and they should agree. `CL_ratio` is FALCON-S in ground
+    effect over JSBSim, which is the measurement; `CL_model` is FALCON-S in ground effect over
+    FALCON-S in free air, which is what the height sweep says should happen. The first crosses
+    the simulator boundary, the second does not, so a gap between them is JSBSim and the plant
+    disagreeing about free air rather than anything to do with ground effect.
+
+    A ratio is the only honest scalar summary here: the measured sweep moves all 27 coefficients
+    independently and does not factorise into a lift multiplier and a drag multiplier.
+    """
+    from falcons.sim.aero_contract import aero_inputs
     alpha = np.radians(4.0)
     uvw = body_velocity(50.0, alpha, 0.0)
     jsbsim_ic(fdm, 200.0, np.zeros(3), uvw, np.zeros(3))
     CL_jsb, CD_jsb = fdm["aero/coeff/CL"], fdm["aero/coeff/CD"]
-    k = aero.VP["wing"]["induced_drag_k"]
     rows = []
     for h_over_b in [0.05, 0.1, 0.2, 0.3, 0.5, 0.75, 1.0, 1.5, 2.0]:
-        state = {"position": np.array([0.0, 0.0, -h_over_b * span])}
-        coeffs = aero.get_coefficients_with_ground_effect(alpha, 0.0, np.zeros(3), state)
-        f = coeffs["mu_d"] * coeffs["mu_l"] ** 2
-        # the model's drag ratio: only the induced part k C_L^2 is scaled by f
-        cd_model = 1.0 + k * coeffs["CL_oge"] ** 2 * (f - 1.0) / coeffs["CD_oge"]
-        rows.append({"h_over_b": h_over_b, "mu_l": coeffs["mu_l"], "mu_d": coeffs["mu_d"],
-                     "CD_model": cd_model,
-                     "CL_ratio": coeffs["CL"] / CL_jsb, "CD_ratio": coeffs["CD"] / CD_jsb,
-                     "CL_falcons": coeffs["CL"], "CL_jsbsim": CL_jsb})
+        d = aero.coefficients_with_diagnostics(
+            aero_inputs(alpha, 0.0, 50.0, np.zeros(3), np.zeros(3), h_over_b * span))
+        rows.append({"h_over_b": h_over_b,
+                     "CL_model": d["CL_ratio_ige"], "CD_model": d["CD_ratio_ige"],
+                     "CL_ratio": d["CL"] / CL_jsb, "CD_ratio": d["CD"] / CD_jsb,
+                     "CL_falcons": d["CL"], "CL_jsbsim": CL_jsb})
     return pd.DataFrame(rows)
 
 
@@ -316,10 +334,10 @@ def rollout(plane: str, aircraft_dir: Path, altitude: float, euler: np.ndarray,
             try:
                 aircraft.step(zero_surfaces, throttle_shut)
             except ValueError as error:
-                # The plant guards against runaway rates. With no controls and no thrust some
-                # airframes — the airships, whose Cm is an order of magnitude the Navion's
-                # against a much smaller inertia — tumble hard enough to trip it. Report the
-                # rollout up to that point rather than dying on it.
+                # The plant guards against runaway rates. An uncontrolled run is bounded on
+                # every current airframe, but the guard stays: an initial condition far enough
+                # off trim can still trip it, and reporting the rollout up to that point is more
+                # useful than dying on it.
                 stopped = f"the plant refused to continue: {error}"
                 break
             for _ in range(substeps):
@@ -329,9 +347,8 @@ def rollout(plane: str, aircraft_dir: Path, altitude: float, euler: np.ndarray,
         h_jsb = fdm["position/h-sl-meters"]
         j_vel = np.array([fdm["velocities/u-fps"], fdm["velocities/v-fps"],
                           fdm["velocities/w-fps"]]) * FT
-        # An uncontrolled airframe with a large Cm against a small inertia — the airships —
-        # tumbles until one simulator or the other loses all meaning. Stop at that point rather
-        # than tabulating numbers nobody can read.
+        # If either simulator loses all meaning — a non-finite state, or a tenfold speed —
+        # stop rather than tabulating numbers nobody can read.
         speeds = [float(np.linalg.norm(f_vel)), float(np.linalg.norm(j_vel))]
         if not (np.isfinite(f_pos).all() and np.isfinite(speeds).all() and np.isfinite(h_jsb)):
             stopped = "a state went non-finite"
@@ -483,10 +500,11 @@ def rollout_statistics(frame: pd.DataFrame, steep: float = 80.0) -> list:
 def trust_horizon(frame: pd.DataFrame, fraction: float = 0.01) -> float:
     """When the velocity difference first passes `fraction` of the initial airspeed.
 
-    Past this the two are no longer comparable in any quantitative sense. An uncontrolled,
-    undamped airframe tumbles, and a tumble amplifies geometrically whatever difference is
-    already there — the plant's time-step error, or on the rotating earth the Coriolis term
-    JSBSim has and FALCON-S does not. Nothing after this line is a defect.
+    Past this the two are no longer comparable in any quantitative sense. Nothing after this
+    line is a defect: it is whatever difference already existed — the plant's time-step error, or
+    on the rotating earth the Coriolis term JSBSim has and FALCON-S does not — amplified by the
+    manoeuvre. On a damped airframe from a sane initial condition it is normally never reached,
+    and the report says so.
     """
     threshold = fraction * frame["V_falcons"].iloc[0]
     exceeded = frame[frame["dvel_body"] > threshold]
@@ -496,9 +514,11 @@ def trust_horizon(frame: pd.DataFrame, fraction: float = 0.01) -> float:
 def growth_time(frame: pd.DataFrame, column: str = "dvel_body") -> float:
     """Time for the difference to grow by a factor of e, from a fit of its logarithm.
 
-    The rollouts tumble, so the disagreement grows geometrically rather than accumulating
-    linearly. One time constant says more about how far a rollout can be trusted than any single
-    error figure: at ten times this, expect ten e-folds.
+    Where the disagreement grows geometrically rather than accumulating linearly, one time
+    constant says more about how far a rollout can be trusted than any single error figure: at ten
+    times this, expect ten e-folds. It does not always: the caller prints "does not grow
+    geometrically" when the fit is meaningless, which is the common case now that the airframes
+    are damped.
     """
     usable = frame[(frame["t"] > 0) & (frame[column].abs() > 0)]
     if len(usable) < 5:
@@ -526,10 +546,9 @@ def write_rollout(frame: pd.DataFrame, path: Path, every: float = 0.01) -> None:
 def print_rollout(frame: pd.DataFrame, every: float = 0.5) -> None:
     """Difference against time, not just its maximum.
 
-    These airframes have no pitch trim at zero elevator and the CPU plant applies no rate
-    damping, so the motion is a divergent tumble that magnifies any difference exponentially.
-    The number that means something is how small the disagreement is early on, and how fast it
-    grows after; a single maximum over the whole run hides both.
+    These airframes are not trimmed at zero elevator, so the run is a real manoeuvre rather
+    than a hold. The number that means something is how small the disagreement is early on and
+    how it develops after; a single maximum over the whole run hides both.
     """
     print("     t [s]      dh [m]  dtrack [m]  dvel [m/s]  datt [deg]   alpha [deg]  beta [deg]")
     step = max(1, int(round(every / (frame["t"].iloc[1] - frame["t"].iloc[0]))))
@@ -549,8 +568,8 @@ def report_growth(frame: pd.DataFrame) -> None:
     else:
         print("  the velocity difference does not grow geometrically over this window")
     if np.isfinite(horizon):
-        print(f"  it passes 1 % of the initial airspeed at t = {horizon:.2f} s; the tumble "
-              f"amplifies whatever\n  difference already exists, so past there the two are no "
+        print(f"  it passes 1 % of the initial airspeed at t = {horizon:.2f} s; past there the "
+              f"manoeuvre has\n  amplified whatever difference already existed, so the two are no "
               f"longer quantitatively comparable")
     else:
         print("  it stays under 1 % of the initial airspeed for the whole window")
@@ -607,7 +626,7 @@ def main() -> None:
     parser.add_argument("--out", type=Path, default=Path(__file__).parent / "out")
     parser.add_argument("--seconds", type=float, default=6.0,
                         help="rollout length. With JSBSim's planet not rotating there is no "
-                             "earth-rotation seed for the tumble to amplify, so a long run stays "
+                             "earth-rotation seed for the manoeuvre to amplify, so a long run stays "
                              "comparable; the printed horizon says if one stops being so")
     parser.add_argument("--altitude", type=float, default=200.0,
                         help="out-of-ground-effect spawn altitude, m")
@@ -643,7 +662,7 @@ def main() -> None:
     args = parser.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
 
-    aero, config = falcons_polynomial(args.plane)
+    aero, config = falcons_aero(args.plane)
     span = config["vehicle_params"]["wing"]["span"]
     euler = np.radians(args.attitude)
     uvw = body_velocity(args.speed, np.radians(args.alpha), 0.0)
@@ -676,14 +695,14 @@ def main() -> None:
               f"{2 * gravity * 100.0 / 6.371e6:.1e} m/s^2 per 100 m of climb, "
               f"against FALCON-S's constant g")
 
-    print("\n1 coefficients: JSBSim table minus FALCON-S polynomial, swept off the table nodes")
+    print("\n1 coefficients: JSBSim minus FALCON-S, swept in alpha and beta")
     coefficients = check_coefficients(fdm, aero, args.altitude)
     coefficients.to_csv(args.out / f"{args.plane}_coefficients.csv", index=False)
     print_statistics([(name, "-", statistics(coefficients[name], coefficients[f"{name}_ref"]))
-                      for name in ["CD", "CY", "CL", "CMx", "CMy", "CMz"]])
-    print("  Bilinear interpolation of a curved function: a chord sits on one side of the arc it "
-          "cuts,\n  so a bias of the same order as the rms is the expected signature and only its "
-          "size is\n  news. Shrink it with gen_jsbsim.py --angle-step.")
+                      for name in ["CD", "CS", "CL", "Cl", "Cm", "Cn"]])
+    print("  Both sides evaluate the same linear expression, so this should be at round-off "
+          "(~1e-12).\n  Anything larger is a transcription error in gen_jsbsim.py -- a dropped "
+          "term, a sign, or a\n  degree/radian slip -- not a modelling difference.")
 
     print("\n2 aero loads at matched (alpha, beta, V): JSBSim minus FALCON-S")
     for beta_deg in (0.0, 10.0):
@@ -728,10 +747,10 @@ def main() -> None:
     print("\n4 ground effect against a reference that has none")
     sweep = check_ground_effect(fdm, aero, span)
     sweep.to_csv(args.out / f"{args.plane}_ground_effect.csv", index=False)
-    print("  h/b     mu_l     mu_d    CL ratio  CD ratio  CD model")
+    print("  h/b    CL model  CD model   CL ratio  CD ratio")
     for _, row in sweep.iterrows():
-        print(f"  {row['h_over_b']:<6.2f} {row['mu_l']:<8.4f} {row['mu_d']:<7.4f} "
-              f"{row['CL_ratio']:<9.4f} {row['CD_ratio']:<9.4f} {row['CD_model']:.4f}")
+        print(f"  {row['h_over_b']:<6.2f} {row['CL_model']:<9.4f} {row['CD_model']:<10.4f} "
+              f"{row['CL_ratio']:<9.4f} {row['CD_ratio']:.4f}")
 
     low = args.ige_h_over_b * span
     print(f"\n5 rollout in ground effect, {args.seconds:.0f} s from h = {low:.2f} m "
@@ -801,10 +820,9 @@ def figure_rollout(path: Path, oge: pd.DataFrame, refined: pd.DataFrame,
         falcons, jsbsim = channel_columns(stem, unit)
 
         def series(frame, column_name, unwrap=is_angle):
-            """Unwrapped, for alpha. These airframes have no pitch trim at zero elevator, so an
-            uncontrolled run tumbles and alpha sawtooths through +-180 several times. Unwrapping
-            turns that into a monotone climb whose slope is the tumble rate, which is both easier
-            to read and free of the wrap spikes that would otherwise litter the residual."""
+            """Unwrapped, for alpha. These airframes are not trimmed at zero elevator, so a run
+            can carry a large excursion; unwrapping keeps the residual free of wrap spikes if it
+            ever crosses +-180, and changes nothing when it does not."""
             values = frame[column_name].to_numpy()
             return np.degrees(np.unwrap(np.radians(values))) if unwrap else values
 
@@ -847,7 +865,7 @@ def figure_aero(path: Path, coefficients: pd.DataFrame, out: Path, plane: str) -
     figure, axes = plt.subplots(1, 3, figsize=(7.0, 2.4))
 
     alpha_sweep = coefficients[coefficients["sweep"] == "alpha"].sort_values("angle_deg")
-    for name, colour in [("CL", "tab:blue"), ("CD", "tab:red"), ("CMy", "tab:purple")]:
+    for name, colour in [("CL", "tab:blue"), ("CD", "tab:red"), ("Cm", "tab:purple")]:
         axes[0].plot(alpha_sweep["angle_deg"], alpha_sweep[f"{name}_falcons"],
                      color=colour, label=name)
         # Markers rather than a second line: two lines on top of each other look like one, and
@@ -855,15 +873,15 @@ def figure_aero(path: Path, coefficients: pd.DataFrame, out: Path, plane: str) -
         axes[0].plot(alpha_sweep["angle_deg"][::12], alpha_sweep[f"{name}_jsbsim"][::12],
                      color=colour, ls="none", marker="o", ms=2.6, mfc="none", mew=0.7)
     axes[0].set(xlabel="alpha [deg]", ylabel="coefficient")
-    axes[0].set_title("FALCON-S polynomial (line), JSBSim table (circles)")
+    axes[0].set_title("FALCON-S (line), JSBSim (circles)")
     axes[0].legend(loc="upper left")
 
-    for name in ("CD", "CL", "CMy", "CY", "CMx", "CMz"):
+    for name in ("CD", "CL", "Cm", "CS", "Cl", "Cn"):
         sweep = coefficients[coefficients["sweep"] == COEFFICIENT_ANGLE[name]]
         sweep = sweep.sort_values("angle_deg")
         axes[1].semilogy(sweep["angle_deg"], sweep[name].abs(), lw=0.7, label=name)
-    axes[1].set(xlabel="alpha or beta [deg]", ylabel="|table - polynomial|")
-    axes[1].set_title("table interpolation error")
+    axes[1].set(xlabel="alpha or beta [deg]", ylabel="|JSBSim - FALCON-S|")
+    axes[1].set_title("transcription residual (round-off)")
     axes[1].legend(ncol=2, loc="lower center", framealpha=1.0, facecolor="white",
                    edgecolor="0.8", frameon=True)
 
@@ -913,17 +931,16 @@ def figure_ground_effect(path: Path, sweep: pd.DataFrame, ige: pd.DataFrame,
                          span: float, h_over_b: float) -> Path:
     """Claim three: ground effect is the one difference that is meant to be there.
 
-    Left, the ratio the two simulators are measured to differ by against what FALCON-S's model
-    asks for — mu_l for lift, and for drag 1 + k C_L^2 (mu_d mu_l^2 - 1) / C_D, since the plant
-    scales only the induced part. Right, what it does to a trajectory a fifth of a span off the
-    ground.
+    Left, the ratio the two simulators are measured to differ by against what FALCON-S's own
+    height sweep asks for. Right, what it does to a trajectory a fifth of a span off the ground.
     """
     import matplotlib.pyplot as plt
     figure, axes = plt.subplots(1, 2, figsize=(7.0, 2.5))
 
-    axes[0].plot(sweep["h_over_b"], sweep["mu_l"], color="tab:blue", label="model: mu_l")
+    axes[0].plot(sweep["h_over_b"], sweep["CL_model"], color="tab:blue",
+                 label="model: CL in GE / free")
     axes[0].plot(sweep["h_over_b"], sweep["CD_model"], color="tab:red",
-                 label="model: drag ratio")
+                 label="model: CD in GE / free")
     axes[0].plot(sweep["h_over_b"], sweep["CL_ratio"], "o", ms=4, mfc="none",
                  color="tab:blue", label="measured: CL ratio")
     axes[0].plot(sweep["h_over_b"], sweep["CD_ratio"], "s", ms=4, mfc="none",

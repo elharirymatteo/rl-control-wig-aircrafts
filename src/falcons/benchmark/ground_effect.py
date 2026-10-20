@@ -38,22 +38,28 @@ STEPS = 4000                                  # 40 s
 SETTLE = 2000                                 # measure over the second half
 
 
-# ─── the lifting-line correction, in numpy (the simulator's own form is falcons/sim/warp/
-#     aerodynamics.py:compute_mu_l/compute_mu_d).
-def _mu_l(h, b, TR, AR):
-    h = np.maximum(h, 1e-3)
-    r = h / b
-    geo = 1 - 2.25 * (TR**0.00273 - 0.997) * (AR**0.717 + 13.6)
-    hf  = 288 * r**0.787 * np.exp(-9.14 * r**0.327) / AR**0.882
-    return 1 + geo * hf
+# ─── the reference curve, read off the aeroplane's OWN measured height sweep.
+#     There is no analytic correlation here any more: ground effect is the OpenVSP data.
+def _drag_ratio(aircraft, h):
+    """CD(h) / CD(free air) at the trim point the sweep was measured at, in percent change.
 
-def _mu_d(h, b, TR, AR):
-    h = np.maximum(h, 1e-3)
-    r = h / b
-    t1 = 1 - (1 - 0.157 * np.maximum(0, TR**0.775 - 0.373)
-              * np.maximum(0, AR**0.417 - 1.27)) * np.exp(-4.74 * np.maximum(0, r**0.814))
-    t2 = r**2 * np.exp(-3.88 * np.maximum(0, r**0.758))
-    return t1 - t2
+    This replaces the lifting-line mu_d*mu_l^2 the simulator used to apply. It is not an
+    independent prediction -- it is the same measured table the plant reads -- so it checks the
+    plumbing and the height datum, not the physics.
+    """
+    from falcons.aircraft.config import AircraftConfig
+    from falcons.aircraft.params import DerivativeAeroParameters
+    from falcons.sim.aero_contract import AeroInputs
+    from falcons.sim.cpu.physics.aerodynamics import DerivativeAerodynamics
+
+    cfg = AircraftConfig(aircraft).load()
+    wing = cfg["vehicle_params"]["wing"]
+    params = DerivativeAeroParameters.from_config(cfg)
+    mk = lambda ge: DerivativeAerodynamics(params, wing["span"], wing["mac"], ge_enable=ge)
+    u = AeroInputs(alpha=params.alpha_run, beta=0.0, v=params.v_ref,
+                   elevator=params.de_run, aileron=0.0, rudder=0.0,
+                   p=0.0, q=0.0, r=0.0, h=float(h))
+    return 100.0 * (mk(True).coefficients(u).CD / mk(False).coefficients(u).CD - 1.0)
 
 
 def build(aircraft, ge):
@@ -64,10 +70,8 @@ def build(aircraft, ge):
     co = load_params(aircraft)
     AP = co["aero_params"].as_warp_struct()
     VP = co["vehicle_params"]
-    m, stall, mac = float(VP.m), float(VP.stall_angle), float(VP.WP.mac)
-    span, TR, AR = float(VP.WP.span), float(VP.WP.taper_ratio), float(VP.WP.aspect_ratio)
-    k, area = float(VP.WP.induced_drag_k), float(VP.WP.area)
-    cg_z = float(VP.WP.cg_offset_vector[2])
+    m, alpha_max, mac = float(VP.m), float(VP.alpha_max), float(VP.WP.mac)
+    span = float(VP.WP.span)
     VP.WP = VP.WP.as_warp_struct(); VP.J = VP.J.as_warp_struct(); VP.PP = VP.PP.as_warp_struct()
     VP.sensor_system = None
     cl = co["control_limits"]
@@ -75,8 +79,7 @@ def build(aircraft, ge):
                                  "EP": co["environment_params"]},
                      save_history=False, in_ground_effect=ge)
     model.solver_type = 1
-    return dict(model=model, m=m, stall=stall, mac=mac, span=span, TR=TR, AR=AR, cg_z=cg_z,
-                k=k, area=area,
+    return dict(model=model, m=m, alpha_max=alpha_max, mac=mac, span=span,
                 elev=[float(v) for v in cl.elevator_limits],
                 thr=[float(v) for v in cl.throttle_limits],
                 va0=float(co["default_initial_state"].linear_vel[0]))
@@ -123,8 +126,8 @@ def trim(P, h, va):
             continue                                       # not actually a root
         if not (P["thr"][0] <= dt <= P["thr"][1] and P["elev"][0] <= de <= P["elev"][1]):
             continue                                       # outside the control authority
-        if abs(a) >= P["stall"]:                           # stall_angle is in radians
-            continue                                       # past stall: not a usable trim
+        if abs(a) >= P["alpha_max"]:                       # radians; the hard incidence gate
+            continue                            # outside the envelope the set was fitted in
         return dict(alpha_deg=np.degrees(a), elevator=de, throttle=dt, thrust_N=T, lift_N=L,
                     drag_N=D)
     return None
@@ -142,35 +145,15 @@ def airspeed(on, off):
     return None
 
 
-def induced_factor(r, TR, AR):
-    """mu_d * mu_l^2 at h/b = r: the factor the correction multiplies the INDUCED drag by."""
-    ml = _mu_l(np.array([r]), 1.0, TR, AR)[0]      # _mu_* take (h, b, ...) and use h/b only
-    md = _mu_d(np.array([r]), 1.0, TR, AR)[0]
-    return float(md * ml ** 2)
+def theory_pct(aircraft, h):
+    """Percent drag change at height `h` [m] from the airframe's measured OpenVSP sweep -- the
+    factor the plant's own coefficients carry.
 
-
-def _rho(h):
-    """ISA troposphere density [kg/m^3], as the plant's get_air_density."""
-    return 1.225 * (1.0 - 2.25577e-5 * h) ** 4.25588
-
-
-def theory_pct(h, P, op, va):
-    """Fixed-angle-of-attack prediction of the thrust change at height `h`: the correction lowers
-    the induced drag k C_L^2 by the factor mu_d mu_l^2 and leaves the parasitic remainder alone, so
-    at the out-of-ground-effect trim point `op` (lift and drag in N, from `trim`)
-
-        dD / D = k C_L^2 (mu_d mu_l^2 - 1) / C_D.
-
-    Level flight makes that the thrust change too. The prediction holds C_L fixed while the
-    aircraft re-trims, which is why the measured saving exceeds it (see `run_trim`). Evaluated at
-    the height the SIMULATOR uses, h + cg_z_offset (`falcons/aircraft/params.py:85`), which is
-    -0.293 m on the Airship V7 and within +-0.04 m on every other airframe."""
-    if not op:
-        return np.nan
-    qS = 0.5 * _rho(h) * va * va * P["area"]
-    cl, cd = op["lift_N"] / qS, op["drag_N"] / qS
-    f = induced_factor((h + P["cg_z"]) / P["span"], P["TR"], P["AR"])
-    return 100.0 * P["k"] * cl * cl * (f - 1.0) / cd
+    Evaluated at the commanded height, full stop. The old correlation had to be evaluated at
+    `h + cg_z_offset` because it took the WING's altitude; the measured sweep is indexed by CG
+    height (FC_Zcg_ = 0 in the VSPAERO runs), which is what the plant now uses.
+    """
+    return _drag_ratio(aircraft, h)
 
 
 def run_trim(planes, results_dir=RESULTS_DIR):
@@ -189,7 +172,7 @@ def run_trim(planes, results_dir=RESULTS_DIR):
         for r in RATIOS:
             h = r * off["span"]
             t_on, t_off = trim(on, h, va), trim(off, h, va)
-            th = theory_pct(h, off, t_off, va)
+            th = theory_pct(ac, h)
             # Drag with ground effect applied but the trim FROZEN at its out-of-ground-effect
             # value. The gap between this and the re-trimmed drag is the part of the saving that
             # comes from the aircraft re-trimming (lower alpha) rather than from the correction
@@ -235,23 +218,20 @@ def run_trim(planes, results_dir=RESULTS_DIR):
 
 # ───── closed loop ─────
 def geometry(aircraft):
-    """(span, taper ratio, aspect ratio, wing z offset) — what the GE correction depends on."""
+    """(span, MAC) — the height scales the measurement and the sweep are indexed by."""
     from falcons.aircraft.params import load_params
     w = load_params(aircraft)["vehicle_params"].WP
-    return (float(w.span), float(w.taper_ratio), float(w.aspect_ratio),
-            float(w.cg_offset_vector[2]))
+    return float(w.span), float(w.mac)
 
 
-def theory_line(aircraft):
-    """theory_pct for every band of `aircraft`, at the airspeed `run_trim` uses: the same
-    prediction the trim table reports, so the closed-loop table carries an identical theory
-    column, including for airframes whose policy cannot hold a band."""
-    on, off = build(aircraft, True), build(aircraft, False)
-    va = airspeed(on, off)
-    if va is None:
-        return {r: np.nan for r in RATIOS}
-    return {r: theory_pct(r * off["span"], off, trim(off, r * off["span"], va), va)
-            for r in RATIOS}
+def thrust_saving(aircraft, r, span):
+    """Percent drag change at h/b = r, read off the airframe's measured sweep.
+
+    Level trim has thrust balancing drag, so the drag ratio is the thrust the band should save.
+    The height datum is now plain CG altitude -- the wing z offset the old correlation needed
+    went out with it -- so the curve is evaluated at exactly the commanded height.
+    """
+    return _drag_ratio(aircraft, r * span)
 
 
 def cell(aircraft, target, ge, ckpt_dir=CKPT_DIR):
@@ -331,8 +311,7 @@ def run_energy(planes, ckpt_dir=CKPT_DIR, results_dir=RESULTS_DIR):
     os.makedirs(results_dir, exist_ok=True)
     rows = []
     for ac in planes:
-        b, TR, AR, cg_z = geometry(ac)
-        theory = theory_line(ac)
+        b, _mac = geometry(ac)
         for r in RATIOS:
             h = r * b
             if h < MIN_ALT:
@@ -341,7 +320,7 @@ def run_energy(planes, ckpt_dir=CKPT_DIR, results_dir=RESULTS_DIR):
             s_off, rmse_off, e_off, t_off = cell(ac, h, False, ckpt_dir)
             d = (100.0 * (e_on - e_off) / e_off) if e_off and np.isfinite(e_off) else np.nan
             dT = (100.0 * (t_on - t_off) / t_off) if t_off and np.isfinite(t_off) else np.nan
-            th = theory[r]
+            th = thrust_saving(ac, r, b)
             # the paired energy comparison only means something if BOTH arms are actually holding
             # the commanded altitude; a policy that is gliding away has no trim throttle to report
             ok = int(min(s_on, s_off) > 0.5

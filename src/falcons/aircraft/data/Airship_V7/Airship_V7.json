@@ -6,7 +6,7 @@
       [
         39.71,
         0.0,
-        8.97
+        -8.97
       ],
       [
         0.0,
@@ -14,24 +14,17 @@
         0.0
       ],
       [
-        8.97,
+        -8.97,
         0.0,
         114.39
       ]
     ],
     "wing": {
-      "span": 5.0,
-      "area": 3.32,
-      "mac": 0.62,
+      "span": 5.0674,
+      "area": 3.3621,
+      "mac": 0.728,
       "aspect_ratio": 7.53,
-      "taper_ratio": 0.39,
-      "induced_drag_k": 0.050053,
-      "induced_drag_source": "polar_fit",
-      "cg_offset_vector": [
-        0.221,
-        0,
-        -0.293
-      ]
+      "taper_ratio": 0.39
     },
     "actuator_system": {
       "aero_surfaces": {
@@ -192,12 +185,9 @@
     }
   },
   "aero_params": {
-    "type": "polynomial",
-    "poly_params_file": "A1_V8_poly_params.csv",
-    "stall_angle_deg": 13.0,
-    "Clp": -0.4,
-    "Cmq": -10.0,
-    "Cnr": -0.15
+    "derivative_set": "openvsp",
+    "alpha_max_deg": 19.5,
+    "alpha_soft_deg": 13.0
   },
   "environment_params": {
     "g": 9.81,
@@ -224,7 +214,7 @@
       -1.0
     ],
     "linear_vel": [
-      28.0,
+      31.0,
       0.0,
       0.0
     ],

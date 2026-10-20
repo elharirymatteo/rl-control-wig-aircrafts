@@ -138,25 +138,6 @@ class AircraftForcesAndMoments(ForcesAndMomentsBase):
         self.M_aero = np.array([Mx, My, Mz])
         return self.M_aero
 
-    def rate_damping_moment(self, angular_vel: np.ndarray,
-                            aerodynamic_vars: Dict[str, float]) -> np.ndarray:
-        """Rotary damping, which the polynomial model does not contain: Clp (p b/2V) Q S b,
-        Cmq (q c/2V) Q S c, Cnr (r b/2V) Q S b, on the body rates (not the gust-relative ones),
-        with V floored at 1 m/s -- the Warp and Torch plants' form. Derivatives default to 0."""
-        Q, S = aerodynamic_vars['Q'], self.VP['wing']['area']
-        b, c = self.VP['wing']['span'], self.VP['wing']['mac']
-        Vc = max(aerodynamic_vars['Va'], 1.0)
-        p, q, r = angular_vel
-        return np.array([
-            self.AP.get('Clp', 0.0) * (p * b / (2.0 * Vc)) * Q * S * b,
-            self.AP.get('Cmq', 0.0) * (q * c / (2.0 * Vc)) * Q * S * c,
-            self.AP.get('Cnr', 0.0) * (r * b / (2.0 * Vc)) * Q * S * b,
-        ])
-    
-    # ===========================
-    # Motor Type Specific Methods
-    # ===========================
-    
     def _compute_electric_motor_thrust(self, throttle: float, motor_config: dict, 
                                      aero_vars: Dict[str, float]) -> float:
         """
@@ -468,9 +449,6 @@ class ForceMomentCalculatorMixin(AerodynamicsCalculatorMixin):
         self.Mb_aero = self.force_moment_calculator.compute_aerodynamic_moments_from_coeffs(
             self.coeffs, aero_vars
         )
-        if getattr(self, 'rate_damping', False):
-            self.Mb_aero = self.Mb_aero + self.force_moment_calculator.rate_damping_moment(
-                self.state['angular_vel'], aero_vars)
         
         # Compute propulsion forces and moments
         self.Fb_thrust, self.Mb_thrust = self.force_moment_calculator.compute_propulsion_forces_moments(

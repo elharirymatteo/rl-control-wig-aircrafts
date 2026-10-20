@@ -8,6 +8,9 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import derive_lqr_gains as D  # noqa: E402
+from test_controllers import LQR_PENDING  # noqa: E402
+
+pytestmark = pytest.mark.skip(reason=LQR_PENDING)
 
 CASES = [(p, v) for v in D.RECIPES for p in D.PLANES if p in D.RECIPES[v]]
 

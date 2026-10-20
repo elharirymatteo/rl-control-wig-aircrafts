@@ -51,11 +51,11 @@ def draw(plane, seed, lateral=True):
     raw = AircraftConfig(plane).load()
     VP = raw["vehicle_params"]
     surf = VP["actuator_system"]["aero_surfaces"]
-    span, cg_z = VP["wing"]["span"], VP["wing"]["cg_offset_vector"][2]
+    span = VP["wing"]["span"]
     va0 = float(raw["default_initial_state"]["linear_vel"][0])
     rng = np.random.default_rng(seed)
     u = lambda lo, hi, *s: rng.uniform(lo, hi, size=s or (N,))
-    h = u(0.2, 6.0) * span - cg_z                          # CG altitude for wing height h/b
+    h = u(0.2, 6.0) * span                                 # CG altitude; the GE sweep is indexed by it
     va, a, b = va0 * u(0.8, 1.2), np.radians(u(-10, 10)), np.radians(u(-10, 10))
     vel = np.stack([va * np.cos(a) * np.cos(b), va * np.sin(b), va * np.sin(a) * np.cos(b)], 1)
     rpy = np.stack([u(-30, 30), u(-15, 15), u(-180, 180)], 1)

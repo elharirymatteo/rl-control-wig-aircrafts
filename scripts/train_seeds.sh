@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Retrain the paper checkpoints, sequentially:
 #   - the benchmark matrix: 3 algos x 2 tasks x 2 planes x SEEDS (default 0-4, 60 runs)
-#   - the ground-effect study's altitude policies on the other three airframes (PPO, seed 0)
+#   - the ground-effect study's altitude policies on the other two airframes (PPO, seed 0)
 # Idempotent: a checkpoint that already exists is skipped, so an interrupted queue resumes.
 #
 #   CKPT=checkpoints RESULTS=results FALCONS=.venv/bin/falcons SEEDS="0 1 2 3 4" scripts/train_seeds.sh
@@ -37,5 +37,5 @@ done; done
 for seed in $SEEDS; do for algo in ppo sac td3; do for task in altitude attitude; do
   for plane in Airship_V7 Volantex_Ranger; do run "$algo" "$task" "$plane" "$seed"; done
 done; done; done
-for plane in Airship_A0S Navion Cirrus_SR22; do run ppo altitude "$plane" 0; done
+for plane in Airship_A0S Navion; do run ppo altitude "$plane" 0; done
 echo "ALL DONE $(date -Is)"

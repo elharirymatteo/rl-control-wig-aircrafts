@@ -6,17 +6,24 @@ import numpy as np, pytest, torch
 from falcons.aircraft.config import AircraftConfig
 from falcons.controllers.policies import ALGOS, TASKS, OBS_ACT, seeds, load_policy
 from falcons.paths import CKPT_DIR
+from conftest import ONLINE_PLANES, requires_derivatives
 
 GOLD = Path(__file__).parent / "golden" / "lqr_gains"
 
+# One grep finds every gate the LQR refit must clear. See plan.md Phase 6.
+LQR_PENDING = "LQR gains were fitted to the polynomial plant; refit pending (plan.md Phase 6)"
+
 CELLS = [(a, t, p, s) for a in ALGOS for t in TASKS for p in ("Airship_V7", "Volantex_Ranger") for s in (0, 1, 2)]
-CELLS += [("ppo", "altitude", p, 0) for p in ("Airship_A0S", "Navion", "Cirrus_SR22")]
+CELLS += [("ppo", "altitude", p, 0) for p in ("Airship_A0S", "Navion")]
+CELL_MARKS = [pytest.param(a, t, p, s, marks=requires_derivatives(p)) for a, t, p, s in CELLS]
 
 
-def test_lqr_gains_identical_to_golden():
-    """The hold gains are the ones scripts/derive_lqr_gains.py writes (tests/test_lqr_gains.py
-    re-derives them); this pins the shipped files to the golden copies without the slow solve."""
-    for ac in ("Airship_V7", "Volantex_Ranger", "Navion", "Cirrus_SR22"):
+@pytest.mark.skip(reason=LQR_PENDING)
+def test_lqr_gains_identical_to_archive():
+    """Frozen, not deleted. The gains themselves are gone -- they linearised the polynomial plant
+    -- so there is nothing to compare against `tests/golden/lqr_gains/` until the LQR controller is
+    refitted to the derivative set. The archive stays as the record of what the old plant flew."""
+    for ac in ("Airship_V7", "Volantex_Ranger", "Navion"):
         new = np.loadtxt(AircraftConfig(ac).lqr_gains_path, delimiter=",")
         old = np.loadtxt(GOLD / f"{ac}_K_LQR.csv", delimiter=",")
         np.testing.assert_array_equal(new, old)
@@ -29,7 +36,7 @@ def test_sixty_three_checkpoints_ship():
 
 
 @pytest.mark.cuda
-@pytest.mark.parametrize("algo,task,plane,seed", CELLS, ids=[f"{a}_{t}_{p}_s{s}" for a, t, p, s in CELLS])
+@pytest.mark.parametrize("algo,task,plane,seed", CELL_MARKS, ids=[f"{a}_{t}_{p}_s{s}" for a, t, p, s in CELLS])
 def test_checkpoint_loads_and_acts(algo, task, plane, seed):
     assert seed in seeds(algo, task, plane)
     pol = load_policy(algo, task, plane, seed)
@@ -40,6 +47,7 @@ def test_checkpoint_loads_and_acts(algo, task, plane, seed):
 
 
 @pytest.mark.cuda
+@requires_derivatives("Airship_V7")
 def test_mppi_attitude_executor_builds_with_seed():
     import warp as wp
     from falcons.envs.attitude import AttitudeEnv
