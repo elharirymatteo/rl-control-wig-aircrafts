@@ -72,6 +72,7 @@ def compute_att_reward(orientation: wp.array(dtype=wp.quatf),
                        w_hdot: wp.float32, sig_hdot: wp.float32,
                        w_va: wp.float32, sig_va: wp.float32,
                        w_energy: wp.float32, w_sm: wp.float32,
+                       w_beta: wp.float32, sig_beta: wp.float32,
                        reward: wp.array(dtype=wp.float32)):
     tid = wp.tid()
     q = orientation[tid]
@@ -85,6 +86,10 @@ def compute_att_reward(orientation: wp.array(dtype=wp.quatf),
     r = w_phi * wp.exp(-0.5 * pe * pe)
     r += w_hdot * wp.exp(-0.5 * he * he)
     r += w_va * wp.exp(-0.5 * ve * ve)
+    vb = linear_vel[tid]
+    sb = vb[1] / wp.max(wp.length(vb), 1.0)
+    beta = wp.asin(wp.clamp(sb, -1.0, 1.0)) / sig_beta
+    r -= w_beta * beta * beta                        # sideslip: no other term prices the rudder
     deficit = (va_safety - Va[tid]) / va_safety
     if deficit > 0.0:
         r -= w_energy * deficit * deficit
@@ -226,7 +231,14 @@ class AttitudeEnv:
         self.w_phi = cfg.get("w_phi", 2.0); self.sig_phi = cfg.get("sig_phi", 0.15)
         self.w_hdot = cfg.get("w_hdot", 2.0); self.sig_hdot = cfg.get("sig_hdot", 1.0)
         self.w_va = cfg.get("w_va", 1.0); self.sig_va = cfg.get("sig_va", 3.0)
-        self.w_energy = cfg.get("w_energy", 2.0); self.w_sm = cfg.get("smooth_weight", 0.1)
+        # No action-rate term in the reward. It is charged on the SAMPLED, clamped action, so an
+        # actuator parked past its stop clamps every exploration sample to the same command and pays
+        # nothing: the penalty paid the policy to saturate (rudder at full deflection on every seed,
+        # V7 throttle at idle until it stalled). Smoothness of the policy itself is CAPS's job, on
+        # the action mean (falcons.train.ppo). The sideslip term then prices the rudder, which no
+        # tracking term does.
+        self.w_energy = cfg.get("w_energy", 2.0); self.w_sm = cfg.get("smooth_weight", 0.0)
+        self.w_beta = cfg.get("w_beta", 0.1); self.sig_beta = cfg.get("sig_beta", 0.1)
         self.va_safety = cfg.get("va_safety", 0.75 * self.base_vel)
         self.bank_limit = float(np.radians(cfg.get("bank_limit_deg", 70.0)))
         self.crash_pen = cfg.get("crash_penalty", 40.0)
@@ -318,7 +330,8 @@ class AttitudeEnv:
             self.model._Va, self._act, self._prev,
             self._phi_tgt, self._hdot_tgt, self._va_tgt, self.va_safety,
             self.w_phi, self.sig_phi, self.w_hdot, self.sig_hdot,
-            self.w_va, self.sig_va, self.w_energy, self.w_sm, self._rew], device=self.device)
+            self.w_va, self.sig_va, self.w_energy, self.w_sm,
+            self.w_beta, self.sig_beta, self._rew], device=self.device)
 
     def reset(self):
         n = self.n

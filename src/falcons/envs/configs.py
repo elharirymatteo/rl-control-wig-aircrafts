@@ -22,14 +22,17 @@ RAMP_CONFIGS = {
 }
 
 # Per-aircraft best operating points (dynamic altitude-keeping, rate-limited reference).
-#   spawn    : max initial offset from target [m] (curriculum 5 -> spawn)
+#   spawn    : max initial offset from target [m] (curriculum 5 -> spawn). The two benchmark
+#              airframes train to 18 m, the far edge of the altitude protocol's 12-18 m offsets
+#              (falcons.benchmark.altitude): trained to 10 m, the V7 policy settled 0.6 m off target
+#              after the longer climbs and acquired only 21-57 % of them.
 #   sigma    : gaussian altitude-reward half-width [m] (tighter = more precise)
 #   w_pr     : pitch-rate penalty weight (low=precise/Airship; high=smooth-safe/fast GA planes)
 #   ref_rate : sub-target ramp rate [m/s] (>0 = rate-limited ref; 0 = direct setpoint)
 PLANE_CONFIGS = {
-    "Airship_V7":  dict(spawn=10.0, sigma=3.0, w_pr=0.2, ref_rate=2.0),
+    "Airship_V7":  dict(spawn=18.0, sigma=3.0, w_pr=0.2, ref_rate=2.0),
     "Airship_A0S": dict(spawn=10.0, sigma=1.0, w_pr=0.2, ref_rate=1.0, damp_w=0.8, w_alt=6.0, zone=1.0, i_clamp=12.0),   # field-test prototype: narrow zone (1m) nulls steady undershoot bias; sigma=1.0/w_alt=6 keep it ROBUST to limited PX6/EKF2 state. ANTI-OVERSHOOT (June 2026): the slow altitude swing on step targets (overshoot then -5.7m undershoot, altitude_viz 0%) was an INTEGRAL LIMIT-CYCLE (ierr swung +/-20 against the default clamp=25), NOT the phugoid. i_clamp 25->12 kills it: undershoot -5.7->-0.0m, bias +2.4->+0.0m, settled RMSE 2.6->1.1m
-    "Volantex_Ranger": dict(spawn=10.0, sigma=1.0, w_pr=0.2, ref_rate=2.0, w_alt=6.0, zone=1.0, damp_w=0.8,
+    "Volantex_Ranger": dict(spawn=18.0, sigma=1.0, w_pr=0.2, ref_rate=2.0, w_alt=6.0, zone=1.0, damp_w=0.8,
                             # safe gust-rejection DR: low wind (cap curriculum at 0.5) + MODEST airspeed-keeping.
                             # NB: dr_va_start near trim (15) penalizes constantly -> collapse; keep va_safety_start
                             # at the default ~0.75*trim (no dr_va_start) and just lift w_va/va_safety a little.
