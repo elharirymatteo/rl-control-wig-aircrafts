@@ -32,6 +32,21 @@ def ge_bracket(hc_q: wp.float32, hc: wp.array(dtype=wp.float32), n: wp.int32):
 
 
 @wp.func
+def ph_mu_l(hb: wp.float32, taper: wp.float32, aspect: wp.float32) -> wp.float32:
+    """Phillips & Hunsaker (2013) lift factor; mirrors falcons.aircraft.derivatives.ph_mu_l."""
+    return 1.0 + (1.0 - 2.25 * (wp.pow(taper, 0.00273) - 0.997) * (wp.pow(aspect, 0.717) + 13.6)) \
+        * (288.0 * wp.pow(hb, 0.787) * wp.exp(-9.14 * wp.pow(hb, 0.327))) / wp.pow(aspect, 0.882)
+
+
+@wp.func
+def ph_mu_d(hb: wp.float32, taper: wp.float32, aspect: wp.float32) -> wp.float32:
+    """Phillips & Hunsaker (2013) induced-drag factor; mirrors falcons.aircraft.derivatives.ph_mu_d."""
+    t1 = 1.0 - (1.0 - 0.157 * wp.max(0.0, wp.pow(taper, 0.775) - 0.373)
+                * wp.max(0.0, wp.pow(aspect, 0.417) - 1.27)) * wp.exp(-4.74 * wp.pow(hb, 0.814))
+    return t1 - hb * hb * wp.exp(-3.88 * wp.pow(hb, 0.758))
+
+
+@wp.func
 def ge_coef(AP: AerodynamicsParametersStruct, ch: wp.int32, i: wp.int32, w: wp.float32) -> wp.float32:
     """One coefficient at the bracketed height: free air plus the interpolated increment."""
     return AP.free[ch] + AP.ge_increment[i, ch] * (1.0 - w) + AP.ge_increment[i + 1, ch] * w
@@ -440,7 +455,7 @@ def compute_all_coeffs(AP: AerodynamicsParametersStruct,
     i = int(AP.n_heights - 2)
     w = wp.float32(1.0)
     k_ind = AP.k_ind_free
-    if ge_enable:
+    if ge_enable and AP.ge_model != 1:            # the sweep (openvsp, hybrid); PH acts on free air
         i, w = ge_bracket(h / mac, AP.hc, AP.n_heights)
         k_ind = AP.k_ind[i] * (1.0 - w) + AP.k_ind[i + 1] * w
 
@@ -467,6 +482,21 @@ def compute_all_coeffs(AP: AerodynamicsParametersStruct,
     Cn = (ge_coef(AP, _CN_BETA, i, w) * beta + ge_coef(AP, _CN_AIL, i, w) * aileron
           + ge_coef(AP, _CN_RUD, i, w) * rudder
           + ge_coef(AP, _CN_P, i, w) * p_hat + ge_coef(AP, _CN_R, i, w) * r_hat)
+
+    # The correlation scales lift and the induced drag k C_L^2, never the moments: relative to free
+    # air on its own (ge_model 1), relative to the sweep's floor and only below it in the hybrid
+    # (ge_model 2). Mirrors the CPU reference.
+    hb = wp.abs(h) / span
+    hb_floor = AP.hc[0] * mac / span
+    if ge_enable and (AP.ge_model == 1 or (AP.ge_model == 2 and hb < hb_floor)):
+        ml = ph_mu_l(hb, AP.ph_taper, AP.ph_aspect)
+        dd = ph_mu_d(hb, AP.ph_taper, AP.ph_aspect) * ml * ml
+        if AP.ge_model == 2:
+            ml_f = ph_mu_l(hb_floor, AP.ph_taper, AP.ph_aspect)
+            ml = ml / ml_f
+            dd = dd / (ph_mu_d(hb_floor, AP.ph_taper, AP.ph_aspect) * ml_f * ml_f)
+        C_D = C_D + k_ind * C_L * C_L * (dd - 1.0)
+        C_L = C_L * ml
 
     # free-air pair, straight off AP.free -- the diagnostic, not part of the dynamics
     cl_alpha_f = AP.free[_CL_ALPHA]
