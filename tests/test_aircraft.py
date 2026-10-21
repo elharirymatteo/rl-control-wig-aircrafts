@@ -26,14 +26,17 @@ def test_files_present(ac):
     assert AircraftConfig(ac).json_path.exists()
 
 
-def test_lqr_gains_are_gone_with_the_plant_they_were_fitted_to():
-    """The shipped K_LQR tables linearised the POLYNOMIAL plant around trim. That plant no longer
-    exists, so flying them would be flying gains designed for different aerodynamics. They were
-    deleted rather than left in place to be picked up silently; the LQR controller is refactored
-    against the derivative set in its own phase (plan.md Phase 6)."""
-    for name in PLANES:
-        c = AircraftConfig(name)
-        assert c.lqr_gains_path is None and c.acquisition_gains_path is None
+def test_lqr_gains_are_fitted_to_the_plant_they_fly():
+    """Every shipped K_LQR table must be what scripts/derive_lqr_gains.py derives from the plant
+    and the reference airspeed as they stand. Gains linearised about another trim are silently
+    worse, not broken: the V7 and Ranger tables once sat at the VSPAERO run-point speeds while the
+    benchmark flew 28 and 15 m/s."""
+    import importlib.util
+    path = Path(__file__).parents[1] / "scripts" / "derive_lqr_gains.py"
+    spec = importlib.util.spec_from_file_location("derive_lqr_gains", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    assert mod.main(["all", "--check"]) < 1e-9
 
 
 # The OpenVSP derivative data is being extracted per airframe and lands one airframe at a time.
