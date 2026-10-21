@@ -74,6 +74,22 @@ def airframes():
     return out
 
 
+def training():
+    """Median wall clock per (algo, task) on the benchmark airframes, successful runs only -- the
+    rule the README's training table uses."""
+    p = RES / "train_timings.tsv"
+    if not p.exists():
+        return []
+    with open(p) as fh:
+        rs = [r for r in csv.DictReader(fh, delimiter="\t")
+              if r["plane"] in PLANES and r.get("rc", "0") == "0"]
+    out = []
+    for algo, task in sorted({(r["algo"], r["task"]) for r in rs}):
+        s = [float(r["seconds"]) for r in rs if r["algo"] == algo and r["task"] == task]
+        out.append(dict(algo=algo, task=task, n=len(s), median_s=float(np.median(s))))
+    return out
+
+
 def results():
     alt = read_csv(GOLD / "altitude.csv", keep_str=("aircraft", "method"))
     man = read_csv(GOLD / "maneuvers.csv", keep_str=("aircraft", "maneuver", "method"))
@@ -88,7 +104,7 @@ def results():
                 ge_effects=opt("ge_training_effects.csv", keep_str=("plane", "band", "effect")),
                 lqr_envelope=opt("lqr_envelope.csv", keep_str=("aircraft",)),
                 jsbsim=opt("jsbsim/paper_table.csv", keep_str=("plane", "ground_effect")),
-                curves=curves(), airframes=airframes())
+                training=training(), curves=curves(), airframes=airframes())
 
 
 def trace_file(plane, man, method, suffix=""):
