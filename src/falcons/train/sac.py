@@ -37,6 +37,9 @@ CURVES_DIR = RESULTS_DIR / "curves"
 # Weights larger than PPO's 0.2/0.1: an off-policy actor loss is scaled by Q-value magnitude
 # (returns over horizon), not normalized advantages, so the same weights bite far less.
 CAPS_TASKS = ("attitude",)
+# Pre-tanh regularizer on the policy's mean and log-std, per task (the reference SAC's mean_reg /
+# std_reg). Off: SAC's stochastic policy did not freeze at its stops the way TD3's actor did.
+PRE_TANH_REG = {"attitude": 0.0}
 CAPS_LAMBDA_T = 0.5    # temporal: penalize mean(obs) drifting from mean(next_obs) -> smooth in time
 CAPS_LAMBDA_S = 0.25   # spatial: penalize mean(obs) sensitivity to obs noise -> Lipschitz / low jitter
 CAPS_SIGMA = 0.05      # spatial-perturbation std (obs are normalized-ish, matches PPO)
@@ -133,11 +136,13 @@ def train(aircraft, task="altitude", steps=None, seed=0, ckpt_dir=CKPT_DIR,
           curves_dir=CURVES_DIR, target_entropy=None, n_envs=N_ENVS, lr=LR, gamma=GAMMA,
           tau=TAU, batch=BATCH, updates_per_step=UPDATES_PER_STEP, replay_cap=REPLAY_CAP,
           warmup=WARMUP, caps=None, caps_t=CAPS_LAMBDA_T, caps_s=CAPS_LAMBDA_S,
-          caps_sigma=CAPS_SIGMA, caps_dims=None, tanh=False):
+          caps_sigma=CAPS_SIGMA, caps_dims=None, tanh=False, pre_tanh_reg=None):
     """Train SAC; returns the best-eval record {"score", "state", "msg"}. `caps` None means the
-    task default (CAPS_TASKS)."""
+    task default (CAPS_TASKS); `pre_tanh_reg` None means the task default (PRE_TANH_REG)."""
     if caps is None:
         caps = task in CAPS_TASKS
+    if pre_tanh_reg is None:
+        pre_tanh_reg = PRE_TANH_REG.get(task, 0.0)
     import warp as wp
 
     steps = steps or STEPS
@@ -257,6 +262,11 @@ def train(aircraft, task="altitude", steps=None, seed=0, ckpt_dir=CKPT_DIR,
                 q2_pi = q2(b_obs, new_act)
                 min_q_pi = torch.min(q1_pi, q2_pi)
                 actor_loss = (log_alpha.exp().detach() * logp - min_q_pi).mean()
+                if pre_tanh_reg:
+                    # the mean and log-std regularizer of the reference SAC: keeps the Gaussian
+                    # off the flat of the tanh, where the policy gradient vanishes
+                    mu, logstd = actor.net(b_obs).chunk(2, -1)
+                    actor_loss = actor_loss + pre_tanh_reg * (mu.pow(2).mean() + logstd.pow(2).mean())
                 if caps:
                     actor_loss = actor_loss + caps_penalty(
                         actor, b_obs, b_nxt, b_mask, caps_t, caps_s, caps_sigma, dims=caps_dims)

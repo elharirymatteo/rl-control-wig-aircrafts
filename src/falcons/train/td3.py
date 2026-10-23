@@ -30,6 +30,10 @@ EXPL_NOISE = 0.1       # std of the exploration Gaussian on the deterministic ac
 POLICY_NOISE = 0.2     # std of the target-policy smoothing noise
 NOISE_CLIP = 0.5       # clip range for the smoothing noise
 POLICY_DELAY = 2       # actor + target updates every this many critic updates
+# L2 on the actor's pre-tanh output, per task. On the attitude task one seed in five drove every
+# channel to its stop within the first 4M steps and never left it (the gradient through a
+# saturated tanh vanishes); 1e-3 keeps that seed flying. The altitude policies never saturated.
+PRE_TANH_REG = {"attitude": 1e-3}
 
 
 class DetActor(nn.Module):
@@ -52,12 +56,14 @@ def train(aircraft, task="altitude", steps=None, seed=0, ckpt_dir=CKPT_DIR,
           updates_per_step=UPDATES_PER_STEP, replay_cap=REPLAY_CAP, warmup=WARMUP,
           expl_noise=EXPL_NOISE, policy_noise=POLICY_NOISE, noise_clip=NOISE_CLIP,
           policy_delay=POLICY_DELAY, tanh=False, caps=None, caps_t=CAPS_LAMBDA_T,
-          caps_s=CAPS_LAMBDA_S, caps_sigma=CAPS_SIGMA, caps_dims=None):
+          caps_s=CAPS_LAMBDA_S, caps_sigma=CAPS_SIGMA, caps_dims=None, pre_tanh_reg=None):
     """Train TD3; returns the best-eval record {"score", "state", "msg"}. Signature mirrors
     falcons.train.sac.train (minus the entropy knob, plus TD3's exploration/smoothing/delay);
     `caps` None means the task default (falcons.train.sac.CAPS_TASKS)."""
     if caps is None:
         caps = task in CAPS_TASKS
+    if pre_tanh_reg is None:
+        pre_tanh_reg = PRE_TANH_REG.get(task, 0.0)
     import warp as wp
 
     steps = steps or STEPS
@@ -159,7 +165,13 @@ def train(aircraft, task="altitude", steps=None, seed=0, ckpt_dir=CKPT_DIR,
 
                 upd["n"] += 1
                 if upd["n"] % policy_delay == 0:      # delayed actor + target updates
-                    actor_loss = -q1(b_obs, actor(b_obs)).mean()
+                    pre = actor.net(b_obs)
+                    actor_loss = -q1(b_obs, torch.tanh(pre)).mean()
+                    if pre_tanh_reg:
+                        # keep the actor off the flat of its tanh: once the pre-activation is
+                        # large on every channel the gradient through tanh vanishes and the
+                        # policy freezes at full deflection for the rest of training
+                        actor_loss = actor_loss + pre_tanh_reg * pre.pow(2).mean()
                     if caps:
                         actor_loss = actor_loss + caps_penalty(
                             actor, b_obs, b_nxt, b_mask, caps_t, caps_s, caps_sigma, dims=caps_dims)
