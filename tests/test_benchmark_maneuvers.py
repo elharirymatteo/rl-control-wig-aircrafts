@@ -1,3 +1,4 @@
+import csv
 import json
 import os
 import shutil
@@ -45,4 +46,7 @@ def test_one_learned_cell_reflies_identically(tmp_path):
     from falcons.benchmark.maneuvers import cell
     c = cell("Volantex_Ranger", "helix", "PPO", ckpt_dir=CKPT_DIR, cache_dir=tmp_path,
              refresh=True, tol_deg=8.6)
-    assert abs(c["phi"]["rmse"] - 0.42) < 0.005      # golden maneuvers.csv: Volantex helix PPO 0.42
+    with open(GOLD / "maneuvers.csv") as f:          # the golden stores the seed mean to 0.01 deg
+        gold = next(r for r in csv.DictReader(f) if (r["aircraft"], r["maneuver"], r["method"])
+                    == ("Volantex_Ranger", "helix", "PPO"))
+    assert abs(c["phi"]["rmse"] - float(gold["phi_rmse_deg"])) <= 0.005 + 1e-9

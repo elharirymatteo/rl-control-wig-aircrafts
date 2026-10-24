@@ -248,6 +248,9 @@
    "throttle_limits": {}
   },
   "aero_params": {
+   "ge_model": "hybrid",
+   "aspect_ratio": 7.692018779342724,
+   "taper_ratio": 0.39,
    "alpha_run": 0.043204840234956236,
    "de_run": -0.01561739813306298,
    "span_ref": 2.56,

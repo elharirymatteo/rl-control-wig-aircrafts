@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from conftest import GOLDENS_PENDING, requires_derivatives
+from conftest import requires_derivatives
 from falcons.aircraft.config import PLANES
 from falcons.benchmark import TOLERANCE
 from falcons.benchmark.diff import compare_csv
@@ -44,7 +44,6 @@ def test_the_theory_curve_is_flat_above_the_measured_sweep():
 
 
 @pytest.mark.cuda
-@pytest.mark.xfail(reason=GOLDENS_PENDING, strict=False)
 def test_trim_table_matches_golden(tmp_path):
     """Volantex_Ranger's reference area and MAC were corrected to the precision its VSPAERO run
     was actually flown at (0.273 -> 0.2733, 0.157 -> 0.156667), which moves its trim thrust by

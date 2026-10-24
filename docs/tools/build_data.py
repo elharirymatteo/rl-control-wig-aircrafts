@@ -74,19 +74,29 @@ def airframes():
     return out
 
 
-def training():
-    """Median wall clock per (algo, task) on the benchmark airframes, successful runs only -- the
-    rule the README's training table uses."""
-    p = RES / "train_timings.tsv"
+def _timings(name):
+    p = RES / name
     if not p.exists():
-        return []
+        return {}
     with open(p) as fh:
         rs = [r for r in csv.DictReader(fh, delimiter="\t")
               if r["plane"] in PLANES and r.get("rc", "0") == "0"]
+    keys = sorted({(r["algo"], r["task"]) for r in rs})
+    return {k: [float(r["seconds"]) for r in rs if (r["algo"], r["task"]) == k] for k in keys}
+
+
+def training():
+    """Median wall clock per (algo, task) on the benchmark airframes, successful runs only -- the
+    rule the README's training table uses. The shipped runs trained four lanes to one GPU, so their
+    wall clock is not a training cost; where a run was re-timed alone (train_timings_solo.tsv) its
+    median is carried too and the page quotes that one."""
+    lanes, solo = _timings("train_timings.tsv"), _timings("train_timings_solo.tsv")
     out = []
-    for algo, task in sorted({(r["algo"], r["task"]) for r in rs}):
-        s = [float(r["seconds"]) for r in rs if r["algo"] == algo and r["task"] == task]
-        out.append(dict(algo=algo, task=task, n=len(s), median_s=float(np.median(s))))
+    for (algo, task), s in lanes.items():
+        row = dict(algo=algo, task=task, n=len(s), median_s=float(np.median(s)))
+        if (algo, task) in solo:
+            row.update(solo_n=len(solo[algo, task]), solo_median_s=float(np.median(solo[algo, task])))
+        out.append(row)
     return out
 
 
@@ -99,7 +109,11 @@ def results():
     ge_trim = read_csv(GOLD / "ge_trim.csv", keep_str=("aircraft",))
     ge_cl = read_csv(GOLD / "ge_energy.csv", keep_str=("aircraft",))
     opt = lambda name, **kw: read_csv(RES / name, **kw) if (RES / name).exists() else []
-    return dict(altitude=alt, maneuvers=man, robustness=rob, ge_trim=ge_trim, ge_closed=ge_cl,
+    dr = RES / "latency_dr" / "robustness.csv"
+    rob_dr = ([r for r in read_csv(dr, keep_str=("aircraft", "method", "disturbance", "severity"))
+               if r["method"] == "PPO"] if dr.exists() else [])
+    return dict(altitude=alt, maneuvers=man, robustness=rob, robustness_dr=rob_dr,
+                ge_trim=ge_trim, ge_closed=ge_cl,
                 ge_training=opt("ge_training_agg.csv", keep_str=("plane", "band", "train")),
                 ge_effects=opt("ge_training_effects.csv", keep_str=("plane", "band", "effect")),
                 lqr_envelope=opt("lqr_envelope.csv", keep_str=("aircraft",)),

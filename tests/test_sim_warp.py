@@ -15,7 +15,7 @@ import pytest
 import torch
 import warp as wp
 
-from conftest import GOLDENS_PENDING, requires_derivatives
+from conftest import requires_derivatives
 
 # Every test here builds Airship_V7 from its OpenVSP derivative set.
 pytestmark = requires_derivatives("Airship_V7")
@@ -264,7 +264,6 @@ def test_body_pitch_rate_at_yaw90_produces_pitch():
 
 # ───────────────────────────── whole-env step vs the archive ─────────────────────────────
 @pytest.mark.cuda
-@pytest.mark.xfail(reason=GOLDENS_PENDING, strict=False)
 def test_warp_altitude_step_matches_archive():
     """One reset + one zero-action step from a fixed seed must equal the archive's output exactly.
     Anything else means the copy changed the plant."""

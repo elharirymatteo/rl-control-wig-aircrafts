@@ -261,17 +261,26 @@ def t_ge_models():
 
 
 def t_training():
-    """Median wall clock per run on one RTX 4090, evaluation included."""
-    p = RES / "train_timings.tsv"
-    if not p.exists():
+    """Median wall clock per run on one RTX 4090, evaluation included. PPO was re-timed alone on the
+    GPU (train_timings_solo.tsv); SAC and TD3 are the shipped runs, which shared the GPU with the
+    other training lanes, so their times are an upper bound."""
+    def load(name):
+        p = RES / name
+        if not p.exists():
+            return []
+        with open(p) as fh:
+            return [r for r in csv.DictReader(fh, delimiter="\t")
+                    if r["plane"] in PLANES and r.get("rc", "0") == "0"]
+    lanes, solo = load("train_timings.tsv"), load("train_timings_solo.tsv")
+    if not lanes:
         return None
-    with open(p) as fh:
-        rs = [r for r in csv.DictReader(fh, delimiter="\t")
-              if r["plane"] in PLANES and r.get("rc", "0") == "0"]
-    med = lambda a, t: sorted(int(r["seconds"]) for r in rs if r["algo"] == a and r["task"] == t)
+    med = lambda rs, a, t: sorted(int(r["seconds"]) for r in rs if r["algo"] == a and r["task"] == t)
     cell = lambda v: f"{v[len(v) // 2] / 60:.0f} min" if v else "–"
-    body = [[a.upper(), cell(med(a, "altitude")), cell(med(a, "attitude"))] for a in ("ppo", "sac", "td3")]
-    return table(["Algorithm", "Altitude task (median per run)", "Attitude task (median per run)"], body)
+    body = []
+    for a in ("ppo", "sac", "td3"):
+        rs, how = (solo, "alone on the GPU") if a == "ppo" and solo else (lanes, "GPU shared by four lanes")
+        body.append([a.upper(), cell(med(rs, a, "altitude")), cell(med(rs, a, "attitude")), how])
+    return table(["Algorithm", "Altitude task (median per run)", "Attitude task (median per run)", "Timed"], body)
 
 
 TABLES = dict(altitude=t_altitude, maneuvers=t_maneuvers, ground_effect=t_ground_effect,

@@ -14,9 +14,6 @@ from falcons.paths import RESULTS_DIR
 #
 # Reduced coverage is the honest cost of this: Airship_V7 is the DEFAULT airframe for the env,
 # warp and MPPI tests, so most of them are dark until V7's CSVs arrive. See plan.md Phase 1.
-# Every result golden frozen by the aero refactor carries this reason, so one grep finds them all
-# when the archive is regenerated after retraining. See plan.md Phase 5B.
-GOLDENS_PENDING = "aero model replaced; goldens pending retrain (plan.md Phase 5)"
 
 
 def _why_offline(plane):
