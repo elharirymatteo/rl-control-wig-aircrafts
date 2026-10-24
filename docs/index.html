@@ -851,7 +851,7 @@ footer.site .frame { display: flex; flex-wrap: wrap; justify-content: space-betw
     <p class="tbl-note">Learned cells pool five seeds × 200 episodes and MPPI three sampling sweeps; the LQR is deterministic and swept once. Learned policies and MPPI fly the GPU plant, the LQR the CPU reference plant, held to single-step parity.</p>
 
     <ul class="findings">
-      <li><b><span class="m" style="background:var(--c-ppo)"></span>Every controller acquires on both airframes.</b>At least 91&nbsp;% of episodes reach and hold the target for every method, 98–100&nbsp;% on the V7. The Ranger misses are single seeds: one PPO seed crashes on a quarter of its climbs, one SAC seed loses half its descents.</li>
+      <li><b><span class="m" style="background:var(--c-ppo)"></span>Every controller acquires on both airframes.</b>At least 91&nbsp;% of episodes reach and hold the target for every method, 98–100&nbsp;% on the V7. The Ranger misses are single seeds: one PPO seed crashes on half of its climbs, one SAC seed on 89 of its 100 descents.</li>
       <li><b><span class="m" style="background:var(--c-sac)"></span>The off-policy agents settle tightest.</b>Once there, SAC and TD3 hold within millimetres and PPO within centimetres; MPPI settles a few centimetres off, with the smallest overshoot.</li>
       <li><b><span class="m" style="background:var(--c-lqr)"></span>The LQR is exact, and overshoots most.</b>On a constant reference the task is the linear regulation problem its gains solve, so its settled error is round-off.</li>
     </ul>
@@ -929,7 +929,7 @@ footer.site .frame { display: flex; flex-wrap: wrap; justify-content: space-betw
           <span style="color:var(--fg-dim)"><i class="dot2"></i>fixed angle of attack</span>
         </div>
         <div class="prose" style="margin-top:1rem;font-size:0.95rem">
-          <p>The dotted line is the drag change at a fixed angle of attack; the solid line lets the aircraft re-trim.</p>
+          <p>The dotted line is the drag change at a fixed angle of attack; the solid line lets the aircraft re-trim. On the two wing-in-ground-effect airframes re-trimming doubles the saving; the Ranger gains nothing from it.</p>
           <p>On the two wing-in-ground-effect airframes the saving grows under the policy, and every policy tracks altitude better in ground effect. The Ranger gains least: at its 15&nbsp;m/s cruise it flies at a low lift coefficient, so there is little induced drag to cut. The Navion policy does not hold the near-ground band, so it has no closed-loop curve.</p>
         </div>
       </div>

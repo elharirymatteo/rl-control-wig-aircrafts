@@ -246,14 +246,15 @@ def ge_table(rs, trim):
          r"$T_{\mathrm{no\,GE}}$ are the thrust at a level-flight trim solved with the "
          r"ground-effect correction on and off, and $\Delta T$ their relative change; the solve "
          r"uses no controller, so every band is reported. $\Delta T_\pi$ is the same change "
-         r"measured while a policy holds the band, and is empty where no policy holds it. Theory "
-         r"is the lifting-line prediction, evaluated at the height the simulator applies the "
-         r"correction at. All quantities are paired: only the correction changes between arms.}",
+         r"measured while a policy holds the band, and is empty where no policy holds it. Fixed "
+         r"$\alpha$ is the drag change at the operating angle of attack, from the same OpenVSP "
+         r"sweep, before the aircraft re-trims. All quantities are paired: only the correction "
+         r"changes between arms.}",
          r"\label{tab:ge-energy}", r"\centering",
          r"\setlength{\tabcolsep}{4pt}",
          r"\begin{tabular}{lrrrrrrr}", r"\toprule",
          r"& $h/b$ & $h$ (m) & $T_{\mathrm{GE}}$ (N) & $T_{\mathrm{no\,GE}}$ (N) & "
-         r"$\Delta T$ & $\Delta T_\pi$ & Theory \\",
+         r"$\Delta T$ & $\Delta T_\pi$ & Fixed $\alpha$ \\",
          r"\midrule"] + body + [r"\end{tabular}", r"\end{table}", ""])
 
 
@@ -332,7 +333,7 @@ def robustness_table(rs):
 
 
 def _departures(rs):
-    """The ' : one of three PPO seeds departed on X, ...' clause, read off the table rather than
+    """The '. One of three PPO training seeds departed on X, ...' clause, read off the table rather than
     written down. A cell whose survival is below 1 lost runs, and the caption has to say so; the
     count of runs is the cell's own n_runs, so this stays true when a re-fly changes which cells
     depart."""
@@ -343,11 +344,12 @@ def _departures(rs):
         n = int(float(r["n_runs"]))
         k = int(round((1.0 - float(r["survival"])) * n))
         unit = "training seed" if r["method"] in ("PPO", "SAC", "TD3") else "sampling draw"
-        return (f"{NUMBER.get(k, k)} of {NUMBER.get(n, n)} {unit}s departed on "
+        return (f"{NUMBER.get(k, k)} of {NUMBER.get(n, n)} {r['method']} {unit}s departed on "
                 f"the {PRETTY.get(r['aircraft'], r['aircraft']).replace(' ', '~')} "
                 f"{MANEUVER_NAME.get(r['maneuver'], r['maneuver'])}")
     out = [phrase(r) for r in lost]
-    return ": " + (", and ".join(out) if len(out) < 3 else ", ".join(out[:-1]) + ", and " + out[-1])
+    out[0] = out[0][0].upper() + out[0][1:]
+    return ". " + (", and ".join(out) if len(out) < 3 else ", ".join(out[:-1]) + ", and " + out[-1])
 
 
 NUMBER = {1: "one", 2: "two", 3: "three", 4: "four", 5: "five"}

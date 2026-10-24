@@ -560,15 +560,19 @@ def _maneuver_runs(plane, ckpt_dir, results_dir):
 
 
 @_paper
-def maneuver_facet(plane, ckpt_dir=CKPT_DIR, results_dir=RESULTS_DIR):
+def maneuver_facet(plane, ckpt_dir=CKPT_DIR, results_dir=RESULTS_DIR, shapes=None):
     """Small-multiples grid of BANK tracking: rows = maneuvers, columns = methods, one trace per
     cell over the commanded reference + tolerance band. This is the section's only time-series
     figure. Above each panel: bank nRMSE / time in the tolerance band of the trace drawn (or the
     time of the crash); the key above the grid says so.
 
-    Why not the overlay: SAC and TD3 are bang-bang on these streams (ReLU actors, no CAPS in the
-    loss), so on a shared axis their traces cover the three tight trackers entirely. Faceting keeps
-    every method at full opacity and turns the jitter into a legible per-method finding.
+    Why not the overlay: SAC and TD3 are bang-bang on these streams (their actuators sit at the
+    stops despite the CAPS term in their loss), so on a shared axis their traces cover the three
+    tight trackers entirely. Faceting keeps every method at full opacity and turns the jitter into
+    a legible per-method finding.
+
+    `shapes` draws a subset of the rows (the paper's main text carries the circle and the s-turn);
+    the file name then lists them.
 
     Why bank only: the climb channel is commanded non-zero in the helix alone (streams.py) --- the
     other three maneuvers command hdot* = 0 throughout, so a climb facet spends fifteen of twenty
@@ -577,11 +581,12 @@ def maneuver_facet(plane, ckpt_dir=CKPT_DIR, results_dir=RESULTS_DIR):
     """
     from falcons.benchmark.maneuvers import SHAPES, time_in_band
     runs_by_shape, methods, tol_deg = _maneuver_runs(plane, ckpt_dir, results_dir)
+    rows = list(shapes or SHAPES)
     key, cmd = "roll", "phi_cmd"
-    fig, ax = plt.subplots(len(SHAPES), len(methods), figsize=(TEXT_W, 5.0),
+    fig, ax = plt.subplots(len(rows), len(methods), figsize=(TEXT_W, 0.6 + 1.1 * len(rows)),
                            sharex="row", sharey="row", squeeze=False, layout="constrained")
     fig.get_layout_engine().set(w_pad=0.02, h_pad=0.02, wspace=0.02, hspace=0.03)
-    for i, sh in enumerate(SHAPES):
+    for i, sh in enumerate(rows):
         runs = runs_by_shape[sh]
         ref = max((runs[m]["trace"] for m in methods
                    if runs[m]["trace"] is not None and len(runs[m]["trace"]["t"])),
@@ -619,7 +624,8 @@ def maneuver_facet(plane, ckpt_dir=CKPT_DIR, results_dir=RESULTS_DIR):
         Patch(color=BAND_GREY, alpha=0.25, lw=0, label=f"±{tol_deg:.1f}° tolerance band"),
         Line2D([], [], color="none", label="above panels: bank nRMSE / time in band")],
         loc="outside upper center", ncol=3, handlelength=1.8)
-    return _save(fig, results_dir, f"fig_maneuver_facet_{plane}")
+    return _save(fig, results_dir, f"fig_maneuver_facet_{plane}"
+                 + ("" if shapes is None else "_" + "_".join(rows)))
 
 
 # ───────────────────────────── ground tracks ─────────────────────────────
@@ -739,9 +745,10 @@ RATIOS = [0.25, 0.5, 1.0, 2.0, 3.0, 6.0]
 def ge_energy(results_dir=RESULTS_DIR):
     """Full-width figure, the two panels side by side. Left: change in thrust from ground effect,
     for the closed-loop policy (solid), for the open-loop trim of `ground_effect.run_trim`
-    (dash-dot, every airframe at every band because it needs no policy) and for the lifting-line
-    prediction (dotted). All three are thrust ratios, so they sit on one axis; the throttle-squared
-    control-effort metric stays in the CSV but is not plotted against the prediction, being a
+    (dash-dot, every airframe at every band because it needs no policy) and for the drag change at
+    the operating angle of attack before the aircraft re-trims (dotted, `theory_pct`). All three
+    are relative changes of the force the propulsion must supply, so they sit on one axis; the
+    throttle-squared control-effort metric stays in the CSV but is not plotted with them, being a
     different quantity. Right: tracking accuracy of the two arms, log-scaled because the three
     airframes' errors span two decades. No titles: the caption carries the description.
 
@@ -793,7 +800,7 @@ def ge_energy(results_dir=RESULTS_DIR):
     # so neither panel carries a legend for something it does not draw.
     ax[0].legend(handles=[Line2D([], [], color="0.25", lw=1.4, marker="o", ms=3, label="policy"),
                           Line2D([], [], color="0.25", lw=1.2, ls="-.", label="open-loop trim"),
-                          Line2D([], [], color="0.25", lw=1.0, ls=":", label="lifting-line")],
+                          Line2D([], [], color="0.25", lw=1.0, ls=":", label=r"drag at fixed $\alpha$")],
                  fontsize=8, frameon=False, loc="lower right", handlelength=2.0,
                  borderpad=0.1, labelspacing=0.25)
     ax[1].legend(handles=[Line2D([], [], color=c, lw=1.4,
@@ -1029,6 +1036,8 @@ FIGURES = {
        for a in ("ppo", "sac", "td3")},
     "attitude_exec": lambda ckpt_dir, results_dir: attitude_exec(PAIR, ckpt_dir, results_dir),
     "maneuver_facet_Airship_V7": lambda ckpt_dir, results_dir: maneuver_facet("Airship_V7", ckpt_dir, results_dir),
+    "maneuver_facet_Airship_V7_circle_sturn": lambda ckpt_dir, results_dir: maneuver_facet(
+        "Airship_V7", ckpt_dir, results_dir, shapes=("circle", "sturn")),
     "maneuver_render": lambda ckpt_dir, results_dir: maneuver_render(PAIR, ckpt_dir, results_dir),
     "ge_energy": lambda ckpt_dir, results_dir: ge_energy(results_dir),
     "robustness_ppo": lambda ckpt_dir, results_dir: robustness_ppo(results_dir),

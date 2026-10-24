@@ -54,8 +54,8 @@ reaches the target and stays within ±1 m.
 - **The off-policy agents settle tightest, the LQR is exact.** Once there, SAC and TD3 hold within
   millimetres and PPO within centimetres. On a constant reference the task is the linear regulation
   problem the LQR gains solve, so its error is round-off; it pays with the largest overshoot.
-- **The Ranger misses are single seeds.** One PPO seed crashes on a quarter of its climbs and one
-  SAC seed loses half its descents; the other seeds acquire every episode.
+- **The Ranger misses are single seeds.** One PPO seed crashes on half of its climbs and one SAC
+  seed on 89 of its 100 descents; the other seeds acquire every episode.
 - **Training has to cover the protocol.** Trained only up to 10 m from the target, the V7 policies
   settled off target after the protocol's 12–18 m climbs, so they train to 18 m. PPO on the Ranger
   is the exception: its curriculum stalls past 10 m under that airframe's narrow altitude reward.
@@ -144,9 +144,10 @@ and off, at a trim solved without a controller and under the PPO altitude policy
 <!-- OBS:ground_effect -->
 - **Flying low costs less thrust on every airframe,** most on the two wing-in-ground-effect
   airframes, and the effect is gone by h/b ≈ 2.
-- **Re-trimming doubles the saving.** At a fixed angle of attack the drag change is about half the
-  trimmed one: the extra lift lets the aircraft fly at a lower angle of attack, and drag falls
-  further.
+- **On the wing-in-ground-effect airframes, re-trimming doubles the saving.** At a fixed angle of
+  attack their drag change is about half the trimmed one: the extra lift lets the aircraft fly at a
+  lower angle of attack, and drag falls further. The Ranger, at a low lift coefficient, gains
+  nothing from re-trimming.
 - **On the two wing-in-ground-effect airframes the saving grows under the policy,** and every
   policy tracks altitude better in ground effect. The Ranger gains least: at
   its 15 m/s cruise it flies at a low lift coefficient, so there is little induced drag to cut. The

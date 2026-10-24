@@ -26,13 +26,13 @@
 \end{table*}
 
 \begin{table}[t]
-\caption{Ground effect and the thrust required to hold altitude. $T_{\mathrm{GE}}$ and $T_{\mathrm{no\,GE}}$ are the thrust at a level-flight trim solved with the ground-effect correction on and off, and $\Delta T$ their relative change; the solve uses no controller, so every band is reported. $\Delta T_\pi$ is the same change measured while a policy holds the band, and is empty where no policy holds it. Theory is the lifting-line prediction, evaluated at the height the simulator applies the correction at. All quantities are paired: only the correction changes between arms.}
+\caption{Ground effect and the thrust required to hold altitude. $T_{\mathrm{GE}}$ and $T_{\mathrm{no\,GE}}$ are the thrust at a level-flight trim solved with the ground-effect correction on and off, and $\Delta T$ their relative change; the solve uses no controller, so every band is reported. $\Delta T_\pi$ is the same change measured while a policy holds the band, and is empty where no policy holds it. Fixed $\alpha$ is the drag change at the operating angle of attack, from the same OpenVSP sweep, before the aircraft re-trims. All quantities are paired: only the correction changes between arms.}
 \label{tab:ge-energy}
 \centering
 \setlength{\tabcolsep}{4pt}
 \begin{tabular}{lrrrrrrr}
 \toprule
-& $h/b$ & $h$ (m) & $T_{\mathrm{GE}}$ (N) & $T_{\mathrm{no\,GE}}$ (N) & $\Delta T$ & $\Delta T_\pi$ & Theory \\
+& $h/b$ & $h$ (m) & $T_{\mathrm{GE}}$ (N) & $T_{\mathrm{no\,GE}}$ (N) & $\Delta T$ & $\Delta T_\pi$ & Fixed $\alpha$ \\
 \midrule
 \multirow{6}{*}{\rotatebox{90}{Airship V7}} & 0.25 & 1.27 & 64.20 & 74.11 & $-13.4$\% & $-17.7$\% & $-6.4$\% \\
 & 0.50 & 2.53 & 70.58 & 74.11 & $-4.8$\% & $-7.5$\% & $-2.3$\% \\
@@ -59,7 +59,7 @@
 \end{table}
 
 \begin{table*}[t]
-\caption{Attitude-stream tracking across the four named maneuvers: bank-angle RMSE in degrees, the interquartile mean over the runs that stayed inside the flight envelope with its 95\% bootstrap interval. A superscript counts the runs that departed; a dash with a superscript marks a cell where every run departed. All five methods drive the identical $(\phi^\star,\dot h^\star,V_a^\star)$ stream through the same plant. The learned methods are flown once per training seed, five seeds. MPPI has no seeds, but a single rollout is one draw, so it is flown five times with different sampling seeds. The LQR is a deterministic law and is flown once: one of five training seeds departed on the Airship~V7 helix, and two of five training seeds departed on the Airship~V7 s-turn.}
+\caption{Attitude-stream tracking across the four named maneuvers: bank-angle RMSE in degrees, the interquartile mean over the runs that stayed inside the flight envelope with its 95\% bootstrap interval. A superscript counts the runs that departed; a dash with a superscript marks a cell where every run departed. All five methods drive the identical $(\phi^\star,\dot h^\star,V_a^\star)$ stream through the same plant. The learned methods are flown once per training seed, five seeds. MPPI has no seeds, but a single rollout is one draw, so it is flown five times with different sampling seeds. The LQR is a deterministic law and is flown once. One of five SAC training seeds departed on the Airship~V7 helix, and two of five SAC training seeds departed on the Airship~V7 s-turn.}
 \label{tab:maneuver}
 \centering
 \setlength{\tabcolsep}{4pt}
