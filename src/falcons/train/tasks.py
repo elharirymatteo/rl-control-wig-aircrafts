@@ -22,9 +22,11 @@ CURVES_DIR = RESULTS_DIR / "curves"
 # ------------------------------------------------------------------ altitude
 
 @torch.no_grad()
-def evaluate_altitude(agent, aircraft, steps=2000, settle=200, in_ground_effect=True):
-    """Robustness (no crash/stall) + RMSE/mean/overshoot/band vs the (ramping) target."""
-    cfg = altitude_env_cfg(aircraft, PLANE_CONFIGS[aircraft]["spawn"], steps + 1, in_ground_effect)
+def evaluate_altitude(agent, aircraft, steps=2000, settle=200, in_ground_effect=True, spawn=None):
+    """Robustness (no crash/stall) + RMSE/mean/overshoot/band vs the (ramping) target, from the
+    spawn range the policy trained to (`spawn` None: the airframe's PLANE_CONFIGS range)."""
+    spawn = PLANE_CONFIGS[aircraft]["spawn"] if spawn is None else spawn
+    cfg = altitude_env_cfg(aircraft, spawn, steps + 1, in_ground_effect)
     env = _make_altitude_env(cfg)
     env.obs_noise = 0.0                          # measure clean tracking (noise is a train-time tool)
     obs = env.reset()
@@ -55,7 +57,7 @@ def train_altitude(aircraft, total_steps=None, seed=0, ckpt_dir=CKPT_DIR, curves
 
     torch.manual_seed(seed)
     cfg = PLANE_CONFIGS[aircraft]
-    spawn_max = cfg["spawn"]
+    spawn_max = cfg.get("ppo_spawn", cfg["spawn"])
     env = _make_altitude_env(altitude_env_cfg(aircraft, spawn_max, in_ground_effect=in_ground_effect))
     agent = Agent(env.num_obs, env.num_act).to(DEVICE)
 
@@ -64,7 +66,7 @@ def train_altitude(aircraft, total_steps=None, seed=0, ckpt_dir=CKPT_DIR, curves
 
     def post_iter(it, iters, agent):
         if it == iters - 1 or (it and it % max(1, iters // 8) == 0):
-            r = evaluate_altitude(agent, aircraft, in_ground_effect=in_ground_effect)
+            r = evaluate_altitude(agent, aircraft, in_ground_effect=in_ground_effect, spawn=spawn_max)
             log_curve(f"ppo_altitude_{aircraft}_s{seed}", (it + 1) * N_ENVS * ROLLOUT, curves_dir,
                       rob=r[0], rmse=r[1], mean=r[2], overshoot=r[3], band=r[4])
             print(f"  [eval it {it}] robustness={r[0]:.3f} RMSE={r[1]:.3f}m "
@@ -77,7 +79,8 @@ def train_altitude(aircraft, total_steps=None, seed=0, ckpt_dir=CKPT_DIR, curves
     out = ckpt_path("ppo", "altitude", aircraft, seed, ckpt_dir)
     Path(ckpt_dir).mkdir(parents=True, exist_ok=True)
     torch.save(agent.state_dict(), out)
-    rob, rmse, mean, over, band = evaluate_altitude(agent, aircraft, in_ground_effect=in_ground_effect)
+    rob, rmse, mean, over, band = evaluate_altitude(agent, aircraft, in_ground_effect=in_ground_effect,
+                                                    spawn=spawn_max)
     print(f"EVAL {aircraft} (altitude s{seed}): robustness={rob:.3f} RMSE={rmse:.3f}m "
           f"mean={mean:.3f}m overshoot={over:.3f}m band±2={band:.3f} -> {out}")
 
