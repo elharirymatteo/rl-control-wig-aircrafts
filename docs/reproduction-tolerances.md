@@ -91,6 +91,20 @@ finding rests on (Task 7a archive-mode gate: 33.92 vs 28.59)
 settling is undefined for a method that acquires <5 % of episodes; the
 table prints --- there
 
+n_survived, n_dropped, n_acquired: counts of the same draws whose survival
+and acquired means are gated against their own spread; a second gate on the
+count, with no spread of its own, would reject every re-draw that loses one
+episode.
+
+### `skip_suffix_if_sigma`
+
+The `_iqm`, `_lo` and `_hi` columns are the hierarchical-bootstrap summary of
+the same draws the mean/std columns describe. They carry no spread of their
+own, so on a sampling row they could only be gated exactly, which a re-draw
+never meets; the mean/std gate already covers the cell. Learned and LQR rows
+are still compared on them exactly. The maneuvers rule skips them for the same
+reason.
+
 ### `sigma_max`
 
 R26: half the domain of a statistic bounded on 0-1. A band that wide

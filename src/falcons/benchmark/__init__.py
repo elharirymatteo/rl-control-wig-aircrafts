@@ -6,7 +6,8 @@ and cap by cap: docs/reproduction-tolerances.md."""
 TOLERANCE = {
     "altitude.csv":   {"sigma_k": 3.0, "key": ["aircraft", "method"], "exact_if": {"method": ["PPO", "SAC", "TD3", "LQR"]},
                        "sigma_if": {"method": ["MPPI"]}, "sigma_suffix": "_std",
-                       "skip_cols_if_sigma": ["settling"],
+                       "skip_cols_if_sigma": ["settling", "n_survived", "n_dropped", "n_acquired"],
+                       "skip_suffix_if_sigma": ["_iqm", "_lo", "_hi"],
                        "sigma_floor": {"survival": 0.05, "acquired": 0.04, "settled_frac": 0.1,
                                        "rmse": 0.5, "energy": 0.02, "overshoot": 6.0},
                        "sigma_max": {"survival": 0.5, "acquired": 0.5, "settled_frac": 0.5},
@@ -15,6 +16,7 @@ TOLERANCE = {
     "ge_energy.csv":  {"key": ["aircraft", "h_over_b"], "abs": 0.0},
     "maneuvers.csv":  {"sigma_k": 3.0, "key": ["aircraft", "maneuver", "method"], "exact_if": {"method": ["PPO", "SAC", "TD3", "LQR"]},
                        "sigma_if": {"method": ["MPPI"]}, "sigma_cols": {"phi_rmse_deg": "phi_rmse_std"},
+                       "skip_suffix_if_sigma": ["_iqm", "_lo", "_hi"],
                        "sigma_floor": {"survival": 0.2, "time_in_band_pct": 5.0,
                                        "phi_theil_u": 0.005, "phi_gain": 0.01,
                                        "phi_phase_lag_s": 0.02},

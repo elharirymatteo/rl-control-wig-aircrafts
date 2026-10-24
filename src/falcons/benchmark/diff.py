@@ -51,7 +51,8 @@ def compare_csv(new, gold, rule):
         for col in rb:
             if col in key or col.endswith(rule.get("sigma_suffix", "_std")):
                 continue
-            if mode == "sigma" and col in rule.get("skip_cols_if_sigma", []):
+            if mode == "sigma" and (col in rule.get("skip_cols_if_sigma", [])
+                                    or col.endswith(tuple(rule.get("skip_suffix_if_sigma", [])))):
                 continue
             va, vb = _num(ra.get(col)), _num(rb.get(col))
             if va is None or vb is None:

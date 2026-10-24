@@ -19,12 +19,14 @@ def test_episode_metrics_band_is_one_metre_and_overshoot_is_past_target():
 
 
 @pytest.mark.cuda
-def test_learned_rows_match_golden_volantex_ppo():
-    a = aggregate(run_learned("Volantex_Ranger", "ppo", 0))
+def test_learned_rows_match_golden_v7_ppo():
+    a = aggregate(run_learned("Airship_V7", "ppo", 0))
     with open(GOLD / "altitude.csv") as f:
         gold = next(r for r in csv.DictReader(f)
-                    if r["aircraft"] == "Volantex_Ranger" and r["method"] == "PPO")
-    # golden row is the 3-seed mean; seed 0 alone must equal it where std is 0 (survival, acquired)
+                    if r["aircraft"] == "Airship_V7" and r["method"] == "PPO")
+    # golden row is the seed mean; seed 0 alone must equal it where std is 0 (survival, acquired).
+    # The Ranger PPO row loses a seed's episodes, so its mean says nothing about seed 0
+    assert float(gold["survival_std"]) == float(gold["acquired_std"]) == 0.0
     assert a["survival"] == float(gold["survival"])
     assert a["survival"] * a["settled_frac"] == pytest.approx(float(gold["acquired"]))
 

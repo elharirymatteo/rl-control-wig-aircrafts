@@ -103,7 +103,9 @@ def test_run_calls_every_protocol_and_writes_its_fingerprint(monkeypatch, tmp_pa
     assert alt[0] == ((planes, "ckpts", out), {"mppi_seeds": (0, 1, 2)})
     assert man[0] == ((planes, "ckpts", out), {"refresh": True, "mppi_draws": 5, "mppi_seed": 0})
     assert rob[0] == ((planes, "ckpts", out), {}) and emit[0] == ((out,), {})
-    assert render[0] == ((None, "ckpts", out), {}) and len(trim) == len(energy) == 1
+    names, *rest = render[0][0]
+    assert rest == ["ckpts", out] and len(trim) == len(energy) == 1
+    assert "maneuver_facet_Airship_V7" in names and not {"throughput", "learning_curves"} & set(names)
     assert set(json.loads((out / "environment.json").read_text())) == \
         {"date", "python", "torch", "cuda", "warp", "gpu", "driver", "commit"}
     assert "NOTHING COMPARED" in (out / "REPORT.md").read_text()

@@ -112,7 +112,7 @@ def run(ckpt_dir, results_dir, out_dir):
     cache proves only that the table emitter is deterministic."""
     from falcons.aircraft.config import PLANES
     from falcons.benchmark import altitude, ground_effect, maneuvers, robustness
-    from falcons.benchmark.figures import render
+    from falcons.benchmark.figures import FIGURES, render
     from falcons.benchmark.tables import emit
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
@@ -131,6 +131,8 @@ def run(ckpt_dir, results_dir, out_dir):
     report = [f"# reproduce {env['date']} on {env['gpu']}", ""] + lines
     (out / "REPORT.md").write_text("\n".join(report) + "\n")
     print("\n".join(report))
-    render(None, ckpt_dir, out)                         # after the report: a figure that fails to
-                                                        # draw must not discard hours of comparison
+    # after the report: a figure that fails to draw must not discard hours of comparison. Only the
+    # figures drawn from what this run re-flew: the throughput sweep (wall clock) and the learning
+    # curves (training logs) are not regenerated here, so out_dir has nothing to draw them from
+    render([n for n in FIGURES if n not in ("throughput", "learning_curves")], ckpt_dir, out)
     return code
